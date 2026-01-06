@@ -1,0 +1,10 @@
+examples/
+*.log
+.DS_Store
+.env
+coverage/
+.nyc_output/
+*.swp
+*.swo
+*~
+

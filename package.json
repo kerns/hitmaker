@@ -1,0 +1,40 @@
+{
+  "name": "hitmaker",
+  "version": "1.0.0",
+  "description": "Web traffic simulator with a beautiful terminal UI. Go make some hits.",
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "hitmaker": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [
+    "traffic",
+    "simulator",
+    "analytics",
+    "testing",
+    "load-testing",
+    "http",
+    "cli",
+    "terminal-ui"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "log-update": "^6.1.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kerns/hitmaker.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kerns/hitmaker/issues"
+  },
+  "homepage": "https://github.com/kerns/hitmaker#readme"
+}
