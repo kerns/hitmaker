@@ -24,11 +24,11 @@ export function getConfig() {
     METHOD: process.env.METHOD || "GET",
     TIMEOUT_MS: Number(process.env.TIMEOUT_MS || 8000),
     DEVICE_RATIO: Number(process.env.DEVICE_RATIO || 50), // 50% desktop by default
-    ACTIVE_MIN_MINUTES: Number(process.env.ACTIVE_MIN_MINUTES || 5),
-    ACTIVE_MAX_MINUTES: Number(process.env.ACTIVE_MAX_MINUTES || 25),
-    INACTIVITY_PROB: Number(process.env.INACTIVITY_PROB || 0.5), // 50% chance
-    INACTIVITY_MIN_MINUTES: Number(process.env.INACTIVITY_MIN_MINUTES || 2),
-    INACTIVITY_MAX_MINUTES: Number(process.env.INACTIVITY_MAX_MINUTES || 45),
+    MIN_ACTIVE: Number(process.env.MIN_ACTIVE || 5),
+    MAX_ACTIVE: Number(process.env.MAX_ACTIVE || 25),
+    IDLE_ODDS: Number(process.env.IDLE_ODDS || 0.5), // 50% chance
+    MIN_IDLE: Number(process.env.MIN_IDLE || 2),
+    MAX_IDLE: Number(process.env.MAX_IDLE || 45),
     UNIQUE_IP_PROB: Number(process.env.UNIQUE_IP_PROB || 0.95), // 95% unique visitors
     URL_PARAMS: urlParams,
   };
@@ -385,16 +385,16 @@ export class TrafficSimulator {
     while (this.isRunning) {
       // active phase
       const activeMinutes = randInt(
-        this.config.ACTIVE_MIN_MINUTES,
-        this.config.ACTIVE_MAX_MINUTES,
+        this.config.MIN_ACTIVE,
+        this.config.MAX_ACTIVE,
       );
       await this.activePhase(id, activeMinutes);
 
       // transition
-      if (Math.random() < this.config.INACTIVITY_PROB && this.isRunning) {
+      if (Math.random() < this.config.IDLE_ODDS && this.isRunning) {
         const idleMinutes = randInt(
-          this.config.INACTIVITY_MIN_MINUTES,
-          this.config.INACTIVITY_MAX_MINUTES,
+          this.config.MIN_IDLE,
+          this.config.MAX_IDLE,
         );
         await this.idlePhase(id, idleMinutes);
       }

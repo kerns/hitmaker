@@ -126,8 +126,14 @@ function spawnWorker(url, stats, onOutput) {
       MIN_PER_MIN: String(CONFIG.MIN_PER_MIN),
       MAX_PER_MIN: String(CONFIG.MAX_PER_MIN),
       CONCURRENT: String(CONFIG.CONCURRENT),
+      METHOD: String(CONFIG.METHOD),
       TIMEOUT_MS: String(CONFIG.TIMEOUT_MS),
       DEVICE_RATIO: String(CONFIG.DEVICE_RATIO),
+      MIN_ACTIVE: String(CONFIG.MIN_ACTIVE),
+      MAX_ACTIVE: String(CONFIG.MAX_ACTIVE),
+      IDLE_ODDS: String(CONFIG.IDLE_ODDS),
+      MIN_IDLE: String(CONFIG.MIN_IDLE),
+      MAX_IDLE: String(CONFIG.MAX_IDLE),
       UNIQUE_IP_PROB: String(CONFIG.UNIQUE_IP_PROB),
       URL_PARAMS: JSON.stringify(CONFIG.URL_PARAMS),
     },
@@ -283,7 +289,7 @@ function renderDashboard(links, statsArray, processes, selectedIndex, logs) {
 
   // Keyboard shortcuts help
   lines.push("");
-  lines.push(chalk.gray("  ↑/↓ Navigate │ K Kill/Restart │ C Config │ Q Quit"));
+  lines.push("  " + chalk.white("↑/↓") + chalk.gray(" Navigate │ ") + chalk.white("K") + chalk.gray(" Kill/Restart │ ") + chalk.white("C") + chalk.gray(" Config │ ") + chalk.white("Q") + chalk.gray(" Quit"));
 
   return lines.join("\n");
 }
@@ -302,6 +308,13 @@ function renderConfigModal(config, selectedField, isEditing, textInput) {
 
   // Config fields
   CONFIG_FIELDS.forEach((field, index) => {
+    // Handle separator (section header)
+    if (field.type === "separator") {
+      lines.push("");
+      lines.push(chalk.yellow.bold(`  ── ${field.label} ──`));
+      return;
+    }
+
     const isSelected = index === selectedField;
     const value = config[field.key];
     const formattedValue = field.format(value);
@@ -317,6 +330,9 @@ function renderConfigModal(config, selectedField, isEditing, textInput) {
         // Text input for numbers - show current value as hint
         const hint = textInput || `(current: ${value})`;
         valueDisplay = chalk.bgWhite.black(` ${hint}_ `);
+      } else if (field.type === "select") {
+        // Show current selection with arrows
+        valueDisplay = chalk.bgWhite.black(` ◀ ${formattedValue} ▶ `);
       } else {
         // Slider for non-number fields
         valueDisplay = chalk.bgWhite.black(` ${formattedValue} `);
@@ -336,15 +352,15 @@ function renderConfigModal(config, selectedField, isEditing, textInput) {
   if (isEditing) {
     const field = CONFIG_FIELDS[selectedField];
     if (field.type === "number") {
-      lines.push(chalk.yellow("  Type number  Enter Save  Esc Cancel"));
+      lines.push("  " + chalk.gray("Type number") + "  " + chalk.white("Enter") + chalk.gray(" Save") + "  " + chalk.white("Esc") + chalk.gray(" Cancel"));
     } else if (field.type === "special") {
-      lines.push(chalk.yellow("  Enter to manage  Esc Cancel"));
+      lines.push("  " + chalk.white("Enter") + chalk.gray(" to manage") + "  " + chalk.white("Esc") + chalk.gray(" Cancel"));
     } else {
-      lines.push(chalk.yellow("  ◀/▶ Adjust  Enter Save  Esc Cancel"));
+      lines.push("  " + chalk.white("◀/▶") + chalk.gray(" Adjust") + "  " + chalk.white("Enter") + chalk.gray(" Save") + "  " + chalk.white("Esc") + chalk.gray(" Cancel"));
     }
   } else {
     lines.push(
-      chalk.gray("  ↑/↓ Navigate  Enter Edit  S Save & Apply  Esc Cancel"),
+      "  " + chalk.white("↑/↓") + chalk.gray(" Navigate") + "  " + chalk.white("Enter") + chalk.gray(" Edit") + "  " + chalk.white("S") + chalk.gray(" Save & Apply") + "  " + chalk.white("Esc") + chalk.gray(" Cancel"),
     );
   }
   lines.push("");
@@ -422,11 +438,11 @@ function renderURLParamsEditor(
   lines.push(chalk.gray("─".repeat(width)));
   if (editMode) {
     lines.push(
-      chalk.yellow("  Type value  Tab Next field  Enter Save  Esc Cancel"),
+      "  " + chalk.gray("Type value") + "  " + chalk.white("Tab") + chalk.gray(" Next field") + "  " + chalk.white("Enter") + chalk.gray(" Save") + "  " + chalk.white("Esc") + chalk.gray(" Cancel"),
     );
   } else {
     lines.push(
-      chalk.gray("  ↑/↓ Navigate  Enter Edit  + Add  - Delete  Esc Back"),
+      "  " + chalk.white("↑/↓") + chalk.gray(" Navigate") + "  " + chalk.white("Enter") + chalk.gray(" Edit") + "  " + chalk.white("+") + chalk.gray(" Add") + "  " + chalk.white("-") + chalk.gray(" Delete") + "  " + chalk.white("Esc") + chalk.gray(" Back"),
     );
   }
   lines.push("");
@@ -607,16 +623,6 @@ async function runInteractive(links) {
 
       // Config modal is open
       if (showConfigModal) {
-        if (key.name === "escape") {
-          // Cancel config
-          showConfigModal = false;
-          configModalIsEditing = false;
-          configModalTextInput = "";
-          configModalDraft = { ...CONFIG };
-          render();
-          return;
-        }
-
         if (configModalIsEditing) {
           // Editing a value
           const field = CONFIG_FIELDS[configModalSelectedField];
@@ -653,6 +659,23 @@ async function runInteractive(links) {
               configModalTextInput += str;
             }
             render();
+          } else if (field.type === "select") {
+            // Select mode - cycle through options
+            const options = field.options;
+            const currentIndex = options.indexOf(configModalDraft[field.key]);
+            if (key.name === "left") {
+              const newIndex = (currentIndex - 1 + options.length) % options.length;
+              configModalDraft[field.key] = options[newIndex];
+            } else if (key.name === "right") {
+              const newIndex = (currentIndex + 1) % options.length;
+              configModalDraft[field.key] = options[newIndex];
+            } else if (key.name === "return") {
+              configModalIsEditing = false;
+            } else if (key.name === "escape") {
+              configModalIsEditing = false;
+              configModalDraft[field.key] = CONFIG[field.key]; // Revert
+            }
+            render();
           } else {
             // Slider mode
             if (key.name === "left") {
@@ -676,20 +699,30 @@ async function runInteractive(links) {
         } else {
           // Navigating fields
           if (key.name === "up") {
-            configModalSelectedField = Math.max(
-              0,
-              configModalSelectedField - 1,
-            );
+            let newIndex = configModalSelectedField - 1;
+            // Skip separator fields
+            while (newIndex >= 0 && CONFIG_FIELDS[newIndex].type === "separator") {
+              newIndex--;
+            }
+            if (newIndex >= 0) {
+              configModalSelectedField = newIndex;
+            }
           } else if (key.name === "down") {
-            configModalSelectedField = Math.min(
-              CONFIG_FIELDS.length - 1,
-              configModalSelectedField + 1,
-            );
+            let newIndex = configModalSelectedField + 1;
+            // Skip separator fields
+            while (newIndex < CONFIG_FIELDS.length && CONFIG_FIELDS[newIndex].type === "separator") {
+              newIndex++;
+            }
+            if (newIndex < CONFIG_FIELDS.length) {
+              configModalSelectedField = newIndex;
+            }
           } else if (key.name === "return") {
             const field = CONFIG_FIELDS[configModalSelectedField];
-            configModalIsEditing = true;
-            if (field.type === "number") {
-              configModalTextInput = ""; // Start with empty field
+            if (field.type !== "separator") {
+              configModalIsEditing = true;
+              if (field.type === "number") {
+                configModalTextInput = ""; // Start with empty field
+              }
             }
           } else if (key.name === "s") {
             // Save and apply
@@ -714,6 +747,12 @@ async function runInteractive(links) {
             }
             showConfigModal = false;
             configModalIsEditing = false;
+          } else if (key.name === "escape") {
+            // Close config modal
+            showConfigModal = false;
+            configModalIsEditing = false;
+            configModalTextInput = "";
+            configModalDraft = { ...CONFIG };
           }
           render();
         }
@@ -840,10 +879,10 @@ async function main() {
     );
 
     console.log(chalk.white("Keyboard Controls:"));
-    console.log(chalk.gray("  ↑/↓  Navigate between links"));
-    console.log(chalk.gray("  K    Kill/Restart selected process"));
-    console.log(chalk.gray("  C    Open configuration"));
-    console.log(chalk.gray("  Q    Quit all processes\n"));
+    console.log("  " + chalk.white("↑/↓") + chalk.gray("  Navigate between links"));
+    console.log("  " + chalk.white("K") + chalk.gray("    Kill/Restart selected process"));
+    console.log("  " + chalk.white("C") + chalk.gray("    Open configuration"));
+    console.log("  " + chalk.white("Q") + chalk.gray("    Quit all processes\n"));
 
     process.exit(0);
   }
