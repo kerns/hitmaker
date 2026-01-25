@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // index.js
-// Hitmaker - A realistic web traffic simulator with beautiful terminal UI
-// Spawns multiple instances of the simulator as child processes for multi-link testing
+// Hitmaker - web traffic simulator with a terminal UI
 
 import { fork } from "child_process";
 import { existsSync, readFileSync } from "fs";

@@ -1,12 +1,25 @@
 {
   "name": "hitmaker",
   "version": "1.0.0",
-  "description": "Web traffic simulator with a beautiful terminal UI. Go make some hits.",
+  "description": "Web traffic simulator with terminal UI",
   "type": "module",
   "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./simulator": "./simulator.js",
+    "./config": "./config.js"
+  },
   "bin": {
     "hitmaker": "./index.js"
   },
+  "files": [
+    "index.js",
+    "worker.js",
+    "simulator.js",
+    "config.js",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "start": "node index.js"
   },
@@ -20,7 +33,7 @@
     "cli",
     "terminal-ui"
   ],
-  "author": "",
+  "author": "David Kerns <https://github.com/kerns>",
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
@@ -31,7 +44,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/kerns/hitmaker.git"
+    "url": "git+https://github.com/kerns/hitmaker.git"
   },
   "bugs": {
     "url": "https://github.com/kerns/hitmaker/issues"
