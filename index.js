@@ -20,7 +20,7 @@ const WORKER_PATH = join(__dirname, "worker.js");
 // Load config (saved settings + env vars)
 let CONFIG = getConfig();
 
-const UPDATE_INTERVAL = 500;
+const UPDATE_INTERVAL = 1000; // 1 second between updating stats
 const STARTUP_DELAY = 1000; // 1 second between starting each process
 
 // ============================================================================
@@ -827,7 +827,7 @@ async function runInteractive(links) {
     if (!showConfigModal && !showURLParamsEditor) {
       render();
     }
-  }, 1000); // Update stats every second when viewing dashboard
+  }, UPDATE_INTERVAL);
 }
 
 // ============================================================================
