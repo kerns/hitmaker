@@ -166,7 +166,36 @@ Configure dynamic URL parameters through the interactive config (press `C`). Eac
 - **Value**: Optional value (empty = just adds `?key`)
 - **Probability**: Chance (0-100%) of including this parameter
 
-This is useful for simulating QR code scans, UTM parameters, or other tracking scenarios.
+### Payloads
+
+Parameters can optionally carry **payloads** — weighted sets of extra key-value pairs that fire alongside the parameter. When a parameter fires and has payloads, one is chosen by weight and its params are appended to the URL.
+
+This is useful for simulating QR code scans with realistic variant data (city, campaign, media type, etc.), UTM parameters, or other tracking scenarios.
+
+To manage payloads, open the URL params editor (`C` → URL Parameters → Enter) and press `P` on any parameter.
+
+```
+Config (C) → URL Parameters (Enter) → Select param → P (Payloads)
+  → Payload List: ↑/↓ Navigate, N Name/Weight, Enter Edit params, +/- Add/Delete
+    → Payload Detail: ↑/↓ Navigate, Enter Edit, +/- Add/Delete key-value pairs
+```
+
+**Example config** (`~/.hitmaker/config.json`):
+```json
+{
+  "URL_PARAMS": [
+    {
+      "key": "qr", "value": "1", "probability": 35,
+      "payloads": [
+        { "name": "Billboard", "weight": 2, "params": { "city": "copenhagen", "media": "billboard" } },
+        { "name": "Bus Stop",  "weight": 1, "params": { "city": "berlin", "media": "bus-stop" } }
+      ]
+    }
+  ]
+}
+```
+
+Parameters without payloads work exactly as before — no breaking change.
 
 ## License
 

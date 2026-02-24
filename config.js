@@ -25,7 +25,7 @@ export const DEFAULT_CONFIG = {
   MAX_IDLE: 45,
   UNIQUE_IP_PROB: 0.95,
   URL_PARAMS: [
-    { key: "qr", value: "", probability: 5 }, // 5% chance, just adds ?qr
+    { key: "qr", value: "1", probability: 35 },
   ],
 };
 
@@ -154,7 +154,13 @@ export const CONFIG_FIELDS = [
     key: "URL_PARAMS",
     label: "URL Parameters",
     type: "special",
-    format: (v) => `${v.length} configured`,
+    format: (v) => {
+      const payloadCount = v.reduce((sum, p) => sum + (p.payloads ? p.payloads.length : 0), 0);
+      if (payloadCount > 0) {
+        return `${v.length} param${v.length !== 1 ? "s" : ""}, ${payloadCount} payload${payloadCount !== 1 ? "s" : ""}`;
+      }
+      return `${v.length} configured`;
+    },
   },
   // Activity Pattern section
   {

@@ -191,6 +191,20 @@ const IP_FIRST_OCTETS = {
   ],
 };
 
+/**
+ * Pick a random payload from a weighted list.
+ * Each payload has { name, weight, params }.
+ */
+function pickPayload(payloads) {
+  const totalWeight = payloads.reduce((sum, p) => sum + p.weight, 0);
+  let roll = Math.random() * totalWeight;
+  for (const payload of payloads) {
+    roll -= payload.weight;
+    if (roll <= 0) return payload;
+  }
+  return payloads[payloads.length - 1];
+}
+
 // ============================================================================
 // Utility Functions
 // ============================================================================
@@ -273,22 +287,41 @@ export class TrafficSimulator {
       this.config.UNIQUE_IP_PROB,
     );
 
-    // Build URL with cache bust and dynamic URL parameters
+    // Build URL with dynamic URL parameters (and optional payloads)
     const sep = this.targetUrl.includes("?") ? "&" : "?";
-    let url = `${this.targetUrl}${sep}r=${cacheBust}`;
-    
-    // Add URL parameters based on their probability
+    // Use cache bust as a URL fragment (not a query param) to avoid polluting url_params
+    let url = this.targetUrl;
     const appliedParams = [];
+
+    // Add URL parameters based on their probability
+    // If a param has payloads, pick one by weight and append its key-value pairs too
+    const paramParts = [];
     this.config.URL_PARAMS.forEach((param) => {
       if (Math.random() * 100 < param.probability) {
         if (param.value) {
-          url += `&${param.key}=${param.value}`;
+          paramParts.push(`${encodeURIComponent(param.key)}=${encodeURIComponent(param.value)}`);
         } else {
-          url += `&${param.key}`;
+          paramParts.push(encodeURIComponent(param.key));
         }
         appliedParams.push(param.key);
+
+        // If this param has payloads, pick one and append its params
+        if (param.payloads && param.payloads.length > 0) {
+          const payload = pickPayload(param.payloads);
+          for (const [key, value] of Object.entries(payload.params)) {
+            paramParts.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
+            appliedParams.push(`${key}=${value}`);
+          }
+        }
       }
     });
+
+    if (paramParts.length > 0) {
+      url += `${sep}${paramParts.join("&")}`;
+    }
+
+    // Append cache bust as fragment (not captured by url_params)
+    url += `#${cacheBust}`;
 
     const controller = new AbortController();
     const timeout = setTimeout(
