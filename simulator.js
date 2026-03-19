@@ -24,6 +24,7 @@ export function getConfig() {
     METHOD: process.env.METHOD || "GET",
     TIMEOUT_MS: Number(process.env.TIMEOUT_MS || 8000),
     DEVICE_RATIO: Number(process.env.DEVICE_RATIO || 50), // 50% desktop by default
+    UNKNOWN_RATIO: Number(process.env.UNKNOWN_RATIO || 0),
     MIN_ACTIVE: Number(process.env.MIN_ACTIVE || 5),
     MAX_ACTIVE: Number(process.env.MAX_ACTIVE || 25),
     IDLE_ODDS: Number(process.env.IDLE_ODDS || 0.5), // 50% chance
@@ -59,6 +60,34 @@ const MOBILE_USER_AGENTS = [
   "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
   "Mozilla/5.0 (iPad; CPU OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
   "Mozilla/5.0 (Linux; Android 13; SM-X906C) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+];
+
+/**
+ * Unknown/unclassifiable user agents — generic strings that analytics engines
+ * (GA4, Plausible, Matomo, Mixpanel, etc.) cannot categorize as desktop or mobile
+ */
+const UNKNOWN_USER_AGENTS = [
+  // Bots & crawlers — most common unknown traffic by far
+  { ua: "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)", weight: 25 },
+  { ua: "Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)", weight: 12 },
+  { ua: "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)", weight: 8 },
+  { ua: "LinkedInBot/1.0 (compatible; Mozilla/5.0; Apache-HttpClient +http://www.linkedin.com)", weight: 5 },
+  { ua: "Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)", weight: 4 },
+  { ua: "Twitterbot/1.0", weight: 4 },
+  // AI agents & scrapers
+  { ua: "Claude-Web/1.0 (Anthropic)", weight: 6 },
+  { ua: "GPTBot/1.2 (+https://openai.com/gptbot)", weight: 6 },
+  { ua: "CCBot/2.0 (https://commoncrawl.org/faq/)", weight: 3 },
+  // CLI & libraries
+  { ua: "curl/8.4.0", weight: 8 },
+  { ua: "python-requests/2.31.0", weight: 6 },
+  { ua: "node-fetch/3.3.2", weight: 3 },
+  { ua: "axios/1.6.2", weight: 2 },
+  { ua: "Go-http-client/2.0", weight: 3 },
+  { ua: "Wget/1.21.4", weight: 2 },
+  // Odd devices — rare but real
+  { ua: "SmartTV/1.0 (SMART-TV; Linux; Tizen 7.0)", weight: 2 },
+  { ua: "Dalvik/2.1.0 (Linux; U; Android 12; oculus Build/SQ3A.220605.009.A1)", weight: 1 },
 ];
 
 const ACCEPT_LANGS = [
@@ -211,6 +240,15 @@ function pickPayload(payloads) {
 
 const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 const randChoice = (arr) => arr[Math.floor(Math.random() * arr.length)];
+const weightedChoice = (items) => {
+  const total = items.reduce((sum, item) => sum + item.weight, 0);
+  let roll = Math.random() * total;
+  for (const item of items) {
+    roll -= item.weight;
+    if (roll <= 0) return item.ua;
+  }
+  return items[items.length - 1].ua;
+};
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -272,9 +310,15 @@ export class TrafficSimulator {
    */
   async doHit(workerId) {
     const hitNumber = ++this.hitCounter;
-    // Pick user agent based on device ratio (% desktop vs mobile)
-    const isDesktop = Math.random() * 100 < this.config.DEVICE_RATIO;
-    const ua = randChoice(isDesktop ? DESKTOP_USER_AGENTS : MOBILE_USER_AGENTS);
+    // Pick user agent: first check unknown ratio, then split desktop/mobile
+    const isUnknown = Math.random() * 100 < (this.config.UNKNOWN_RATIO || 0);
+    let ua;
+    if (isUnknown) {
+      ua = weightedChoice(UNKNOWN_USER_AGENTS);
+    } else {
+      const isDesktop = Math.random() * 100 < this.config.DEVICE_RATIO;
+      ua = randChoice(isDesktop ? DESKTOP_USER_AGENTS : MOBILE_USER_AGENTS);
+    }
     const al = randChoice(ACCEPT_LANGS);
     const ref = randChoice(REFERERS);
     const location = randChoice(LOCATIONS);

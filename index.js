@@ -128,6 +128,7 @@ function spawnWorker(url, stats, onOutput) {
       METHOD: String(CONFIG.METHOD),
       TIMEOUT_MS: String(CONFIG.TIMEOUT_MS),
       DEVICE_RATIO: String(CONFIG.DEVICE_RATIO),
+      UNKNOWN_RATIO: String(CONFIG.UNKNOWN_RATIO),
       MIN_ACTIVE: String(CONFIG.MIN_ACTIVE),
       MAX_ACTIVE: String(CONFIG.MAX_ACTIVE),
       IDLE_ODDS: String(CONFIG.IDLE_ODDS),

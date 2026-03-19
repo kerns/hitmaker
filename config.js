@@ -17,7 +17,8 @@ export const DEFAULT_CONFIG = {
   CONCURRENT: 1,
   METHOD: "GET",
   TIMEOUT_MS: 15000,
-  DEVICE_RATIO: 50, // 50 = 50% desktop, 50% mobile
+  DEVICE_RATIO: 50, // 50 = 50% desktop, 50% mobile (of non-unknown traffic)
+  UNKNOWN_RATIO: 0, // % of total traffic that uses unknown/unclassifiable device
   MIN_ACTIVE: 5,
   MAX_ACTIVE: 25,
   IDLE_ODDS: 0.5,
@@ -75,6 +76,7 @@ export function getConfig() {
     METHOD: process.env.METHOD || saved.METHOD || DEFAULT_CONFIG.METHOD,
     TIMEOUT_MS: Number(process.env.TIMEOUT_MS || saved.TIMEOUT_MS),
     DEVICE_RATIO: Number(process.env.DEVICE_RATIO || saved.DEVICE_RATIO),
+    UNKNOWN_RATIO: Number(process.env.UNKNOWN_RATIO ?? saved.UNKNOWN_RATIO ?? DEFAULT_CONFIG.UNKNOWN_RATIO),
     MIN_ACTIVE: Number(process.env.MIN_ACTIVE || saved.MIN_ACTIVE),
     MAX_ACTIVE: Number(process.env.MAX_ACTIVE || saved.MAX_ACTIVE),
     IDLE_ODDS: Number(process.env.IDLE_ODDS || saved.IDLE_ODDS),
@@ -131,6 +133,15 @@ export const CONFIG_FIELDS = [
     max: 100,
     step: 5,
     format: (v) => `${v}% desktop / ${100 - v}% mobile`,
+  },
+  {
+    key: "UNKNOWN_RATIO",
+    label: "Unknown Device %",
+    type: "slider",
+    min: 0,
+    max: 100,
+    step: 5,
+    format: (v) => `${v}% unknown / ${100 - v}% desktop+mobile`,
   },
   {
     key: "UNIQUE_IP_PROB",

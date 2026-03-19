@@ -62,7 +62,8 @@ You can also use environment variables:
 | `CONCURRENT` | 1 | Concurrent workers per link |
 | `METHOD` | GET | HTTP method (GET, HEAD, POST) |
 | `TIMEOUT_MS` | 15000 | Request timeout (ms) |
-| `DEVICE_RATIO` | 50 | Desktop percentage (0-100) |
+| `DEVICE_RATIO` | 50 | Desktop percentage of non-unknown traffic (0-100) |
+| `UNKNOWN_RATIO` | 0 | Percentage of traffic from unknown devices — bots, crawlers, CLI tools (0-100) |
 | `UNIQUE_IP_PROB` | 0.95 | Probability of unique IP (0.0-1.0) |
 | `MIN_ACTIVE` | 5 | Minimum active phase duration (minutes) |
 | `MAX_ACTIVE` | 25 | Maximum active phase duration (minutes) |
@@ -146,7 +147,8 @@ import { TrafficSimulator } from "hitmaker/simulator";
 const simulator = new TrafficSimulator("https://example.com/link", {
   MIN_PER_MIN: 10,
   MAX_PER_MIN: 50,
-  DEVICE_RATIO: 70, // 70% desktop, 30% mobile
+  DEVICE_RATIO: 70, // 70% desktop, 30% mobile (of non-unknown traffic)
+  UNKNOWN_RATIO: 10, // 10% unknown devices (bots, crawlers, CLI tools)
 });
 
 await simulator.start();
