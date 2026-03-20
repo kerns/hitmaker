@@ -376,6 +376,7 @@ export class TrafficSimulator {
     try {
       const res = await fetch(url, {
         method: this.config.METHOD,
+        redirect: "manual",
         signal: controller.signal,
         headers: {
           "User-Agent": ua,
@@ -434,12 +435,15 @@ export class TrafficSimulator {
 
     const end = Date.now() + minutes * 60 * 1000;
     while (Date.now() < end && this.isRunning) {
+      const hitStart = Date.now();
       await this.doHit(workerId);
+      const elapsed = Date.now() - hitStart;
 
-      // interval per request in ms
+      // interval per request in ms, minus time already spent on the fetch
       const base = 60000 / rate;
       const jitter = Math.round(base * (Math.random() * 0.2 - 0.1)); // ±10%
-      await sleep(Math.max(100, base + jitter));
+      const remaining = Math.max(0, base + jitter - elapsed);
+      if (remaining > 0) await sleep(remaining);
     }
   }
 
