@@ -360,7 +360,7 @@ function renderConfigModal(config, selectedField, isEditing, textInput) {
     }
   } else {
     lines.push(
-      "  " + chalk.white("↑/↓") + chalk.gray(" Navigate") + "  " + chalk.white("Enter") + chalk.gray(" Edit") + "  " + chalk.white("S") + chalk.gray(" Save & Apply") + "  " + chalk.white("Esc") + chalk.gray(" Cancel"),
+      "  " + chalk.white("↑/↓") + chalk.gray(" Navigate") + "  " + chalk.white("Space") + chalk.gray(" Edit") + "  " + chalk.white("Enter") + chalk.gray(" Update session") + "  " + chalk.white("S") + chalk.gray(" Save new defaults") + "  " + chalk.white("Esc") + chalk.gray(" Cancel"),
     );
   }
   lines.push("");
@@ -1086,7 +1086,7 @@ async function runInteractive(links) {
             if (newIndex < CONFIG_FIELDS.length) {
               configModalSelectedField = newIndex;
             }
-          } else if (key.name === "return") {
+          } else if (key.name === "space") {
             const field = CONFIG_FIELDS[configModalSelectedField];
             if (field.type !== "separator") {
               configModalIsEditing = true;
@@ -1094,27 +1094,32 @@ async function runInteractive(links) {
                 configModalTextInput = ""; // Start with empty field
               }
             }
-          } else if (key.name === "s") {
-            // Save and apply
+          } else if (key.name === "return" || key.name === "s") {
+            // Apply config to session and restart workers
             CONFIG = { ...configModalDraft };
-            if (saveConfig(CONFIG)) {
-              addLog("✓ Configuration saved");
-              // Restart all processes with new config
-              processes.forEach((p, i) => {
-                if (p && !p.killed) {
-                  p.kill();
-                  setTimeout(() => {
-                    const child = spawnWorker(
-                      links[i].url,
-                      statsArray[i],
-                      addLog,
-                    );
-                    processes[i] = child;
-                    statsArray[i].status = "starting";
-                  }, 500);
-                }
-              });
+            if (key.name === "s") {
+              // S also saves to disk as new defaults
+              if (saveConfig(CONFIG)) {
+                addLog("✓ Settings saved as new defaults");
+              }
+            } else {
+              addLog("✓ Settings applied to session");
             }
+            // Restart all processes with new config
+            processes.forEach((p, i) => {
+              if (p && !p.killed) {
+                p.kill();
+                setTimeout(() => {
+                  const child = spawnWorker(
+                    links[i].url,
+                    statsArray[i],
+                    addLog,
+                  );
+                  processes[i] = child;
+                  statsArray[i].status = "starting";
+                }, 500);
+              }
+            });
             showConfigModal = false;
             configModalIsEditing = false;
           } else if (key.name === "escape") {
