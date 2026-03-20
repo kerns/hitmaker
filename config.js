@@ -16,7 +16,7 @@ export const DEFAULT_CONFIG = {
   MAX_PER_MIN: 15,
   CONCURRENT: 1,
   METHOD: "GET",
-  TIMEOUT_MS: 15000,
+  TIMEOUT_MS: 5000,
   DEVICE_RATIO: 50, // 50 = 50% desktop, 50% mobile (of non-unknown traffic)
   UNKNOWN_RATIO: 0, // % of total traffic that uses unknown/unclassifiable device
   MIN_ACTIVE: 5,

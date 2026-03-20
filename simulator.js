@@ -22,7 +22,7 @@ export function getConfig() {
     MAX_PER_MIN: Number(process.env.MAX_PER_MIN || 100),
     CONCURRENT: Number(process.env.CONCURRENT || 1),
     METHOD: process.env.METHOD || "GET",
-    TIMEOUT_MS: Number(process.env.TIMEOUT_MS || 8000),
+    TIMEOUT_MS: Number(process.env.TIMEOUT_MS || 5000),
     DEVICE_RATIO: Number(process.env.DEVICE_RATIO || 50), // 50% desktop by default
     UNKNOWN_RATIO: Number(process.env.UNKNOWN_RATIO || 0),
     MIN_ACTIVE: Number(process.env.MIN_ACTIVE || 5),
