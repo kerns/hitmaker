@@ -360,7 +360,7 @@ function renderConfigModal(config, selectedField, isEditing, textInput) {
     }
   } else {
     lines.push(
-      "  " + chalk.white("↑/↓") + chalk.gray(" Navigate") + "  " + chalk.white("Space") + chalk.gray(" Edit") + "  " + chalk.white("Enter") + chalk.gray(" Update session") + "  " + chalk.white("S") + chalk.gray(" Save new defaults") + "  " + chalk.white("Esc") + chalk.gray(" Cancel"),
+      "  " + chalk.white("↑/↓") + chalk.gray(" Navigate") + "  " + chalk.white("Enter") + chalk.gray(" Edit") + "  " + chalk.white("A") + chalk.gray(" Apply to session") + "  " + chalk.white("S") + chalk.gray(" Save defaults") + "  " + chalk.white("Esc") + chalk.gray(" Cancel"),
     );
   }
   lines.push("");
@@ -1086,7 +1086,7 @@ async function runInteractive(links) {
             if (newIndex < CONFIG_FIELDS.length) {
               configModalSelectedField = newIndex;
             }
-          } else if (key.name === "space") {
+          } else if (key.name === "return") {
             const field = CONFIG_FIELDS[configModalSelectedField];
             if (field.type !== "separator") {
               configModalIsEditing = true;
@@ -1094,10 +1094,10 @@ async function runInteractive(links) {
                 configModalTextInput = ""; // Start with empty field
               }
             }
-          } else if (key.name === "return" || key.name === "s") {
-            // Apply config to session and restart workers
+          } else if (str === "a" || str === "s") {
+            // Both apply config to session and restart workers
             CONFIG = { ...configModalDraft };
-            if (key.name === "s") {
+            if (str === "s") {
               // S also saves to disk as new defaults
               if (saveConfig(CONFIG)) {
                 addLog("✓ Settings saved as new defaults");
