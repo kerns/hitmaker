@@ -303,8 +303,7 @@ function renderConfigModal(config, selectedField, isEditing, textInput) {
 
   // Title
   lines.push("");
-  lines.push(" " + chalk.white.bold("▌") + chalk.white.bold("Configuration"));
-  lines.push("  " + chalk.gray("─".repeat(width - 2)));
+  lines.push(chalk.inverse.bold(" Configuration ".padEnd(width)));
   lines.push("");
 
   // Config fields
