@@ -396,6 +396,9 @@ export class TrafficSimulator {
         },
       });
 
+      // Drain response body to release the socket (undici hangs otherwise on manual redirects)
+      await res.body?.cancel();
+
       console.log(
         new Date().toISOString(),
         `W${workerId}`,
