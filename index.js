@@ -303,7 +303,8 @@ function renderConfigModal(config, selectedField, isEditing, textInput) {
 
   // Title
   lines.push("");
-  lines.push(chalk.bgYellow.black.bold(" ⚙️  Configuration ".padEnd(width)));
+  lines.push(" " + chalk.white.bold("▌") + chalk.white.bold("Configuration"));
+  lines.push("  " + chalk.gray("─".repeat(width - 2)));
   lines.push("");
 
   // Config fields
@@ -311,7 +312,9 @@ function renderConfigModal(config, selectedField, isEditing, textInput) {
     // Handle separator (section header)
     if (field.type === "separator") {
       lines.push("");
-      lines.push(chalk.yellow.bold(`  ── ${field.label} ──`));
+      const labelPart = chalk.yellow(field.label) + " ";
+      const lineLen = width - 2 - field.label.length - 1;
+      lines.push("  " + labelPart + chalk.gray("─".repeat(Math.max(0, lineLen))));
       return;
     }
 
@@ -359,9 +362,8 @@ function renderConfigModal(config, selectedField, isEditing, textInput) {
       lines.push("  " + chalk.white("◀/▶") + chalk.gray(" Adjust") + "  " + chalk.white("Enter") + chalk.gray(" Save") + "  " + chalk.white("Esc") + chalk.gray(" Cancel"));
     }
   } else {
-    lines.push(
-      "  " + chalk.white("↑/↓") + chalk.gray(" Navigate") + "  " + chalk.white("Enter") + chalk.gray(" Edit") + "  " + chalk.white("A") + chalk.gray(" Apply to session") + "  " + chalk.white("S") + chalk.gray(" Set as new default") + "  " + chalk.white("Esc") + chalk.gray(" Cancel"),
-    );
+    lines.push("  " + chalk.white("↑/↓") + chalk.gray(" Navigate") + "  " + chalk.white("Enter") + chalk.gray(" Edit") + "  " + chalk.white("Esc") + chalk.gray(" Cancel"));
+    lines.push("  " + chalk.white("A") + chalk.gray(" Apply to session") + "  " + chalk.white("S") + chalk.gray(" Set as new default"));
   }
   lines.push("");
 
@@ -645,7 +647,7 @@ async function runInteractive(links) {
 
   // Config modal state
   let showConfigModal = false;
-  let configModalSelectedField = 0;
+  let configModalSelectedField = 1;
   let configModalIsEditing = false;
   let configModalTextInput = "";
   let configModalDraft = { ...CONFIG };
@@ -1158,7 +1160,7 @@ async function runInteractive(links) {
       // Open config modal
       if (key.name === "c") {
         showConfigModal = true;
-        configModalSelectedField = 0;
+        configModalSelectedField = 1;
         configModalIsEditing = false;
         configModalDraft = { ...CONFIG };
         render();
