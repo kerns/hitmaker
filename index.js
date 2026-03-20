@@ -21,7 +21,7 @@ const WORKER_PATH = join(__dirname, "worker.js");
 let CONFIG = getConfig();
 
 const UPDATE_INTERVAL = 1000; // 1 second between updating stats
-const STARTUP_DELAY = 1000; // 1 second between starting each process
+const STARTUP_DELAY = 100; // small stagger between starting each process
 
 // ============================================================================
 // Helpers
