@@ -310,7 +310,7 @@ function renderConfigModal(config, selectedField, isEditing, textInput) {
   CONFIG_FIELDS.forEach((field, index) => {
     // Handle separator (section header)
     if (field.type === "separator") {
-      lines.push("");
+      if (index > 0) lines.push("");
       const labelPart = chalk.yellow(field.label) + " ";
       const lineLen = width - 2 - field.label.length - 1;
       lines.push("  " + labelPart + chalk.gray("─".repeat(Math.max(0, lineLen))));
