@@ -1095,10 +1095,10 @@ async function runInteractive(links) {
                 configModalTextInput = ""; // Start with empty field
               }
             }
-          } else if (str === "a" || str === "s") {
+          } else if (str === "a" || str === "A" || str === "s" || str === "S") {
             // Both apply config to session and restart workers
             CONFIG = { ...configModalDraft };
-            if (str === "s") {
+            if (str === "s" || str === "S") {
               // S also saves to disk as new defaults
               if (saveConfig(CONFIG)) {
                 addLog("✓ Settings saved as new defaults");
@@ -1123,7 +1123,7 @@ async function runInteractive(links) {
             });
             showConfigModal = false;
             configModalIsEditing = false;
-          } else if (str === "r") {
+          } else if (str === "r" || str === "R") {
             // Restore factory defaults
             configModalDraft = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
             addLog("✓ Factory defaults restored (press A to apply or S to save)");
