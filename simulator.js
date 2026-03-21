@@ -2,6 +2,26 @@
 // Core traffic simulation engine
 // Simulates realistic web traffic with diverse user agents, locations, IPs, and referers
 
+import http from "http";
+import https from "https";
+import { lookup as dnsLookup } from "dns";
+
+// DNS cache with 60s TTL — avoids repeated getaddrinfo calls
+// (macOS .local mDNS resolution adds ~5s per uncached lookup)
+const DNS_TTL_MS = 60_000;
+const dnsCache = new Map();
+function cachedLookup(hostname, options, callback) {
+  const key = `${hostname}:${options.family || 0}`;
+  const cached = dnsCache.get(key);
+  if (cached && Date.now() - cached.ts < DNS_TTL_MS) {
+    return process.nextTick(callback, null, cached.address, cached.family);
+  }
+  dnsLookup(hostname, options, (err, address, family) => {
+    if (!err) dnsCache.set(key, { address, family, ts: Date.now() });
+    callback(err, address, family);
+  });
+}
+
 // ============================================================================
 // Configuration
 // ============================================================================
@@ -22,7 +42,7 @@ export function getConfig() {
     MAX_PER_MIN: Number(process.env.MAX_PER_MIN || 100),
     CONCURRENT: Number(process.env.CONCURRENT || 1),
     METHOD: process.env.METHOD || "GET",
-    TIMEOUT_MS: Number(process.env.TIMEOUT_MS || 8000),
+    TIMEOUT_MS: Number(process.env.TIMEOUT_MS || 5000),
     DEVICE_RATIO: Number(process.env.DEVICE_RATIO || 50), // 50% desktop by default
     UNKNOWN_RATIO: Number(process.env.UNKNOWN_RATIO || 0),
     MIN_ACTIVE: Number(process.env.MIN_ACTIVE || 5),
@@ -373,40 +393,49 @@ export class TrafficSimulator {
       this.config.TIMEOUT_MS,
     );
 
+    const parsedUrl = new URL(url);
+    const doRequest = parsedUrl.protocol === "https:" ? https.request : http.request;
+
     try {
-      const res = await fetch(url, {
-        method: this.config.METHOD,
-        signal: controller.signal,
-        headers: {
-          "User-Agent": ua,
-          "Accept-Language": al,
-          Referer: ref,
-          Accept:
-            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          // Simulate client IP - this is what the redirect service uses for uniqueness
-          "x-forwarded-for": fakeIp,
-          "x-real-ip": fakeIp,
-          // Simulate Vercel geolocation headers
-          "x-vercel-ip-country": location.country,
-          "x-vercel-ip-city": location.city,
-          "x-vercel-ip-country-region": location.region,
-          "x-vercel-ip-latitude": location.latitude,
-          "x-vercel-ip-longitude": location.longitude,
-        },
+      const res = await new Promise((resolve, reject) => {
+        const req = doRequest(url, {
+          method: this.config.METHOD,
+          signal: controller.signal,
+          lookup: cachedLookup,
+          headers: {
+            "User-Agent": ua,
+            "Accept-Language": al,
+            Referer: ref,
+            Accept:
+              "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "x-forwarded-for": fakeIp,
+            "x-real-ip": fakeIp,
+            "x-vercel-ip-country": location.country,
+            "x-vercel-ip-city": location.city,
+            "x-vercel-ip-country-region": location.region,
+            "x-vercel-ip-latitude": location.latitude,
+            "x-vercel-ip-longitude": location.longitude,
+          },
+        }, (response) => {
+          response.resume(); // drain body immediately
+          resolve(response);
+        });
+        req.on("error", reject);
+        req.end();
       });
 
       console.log(
         new Date().toISOString(),
         `W${workerId}`,
         `#${hitNumber}`,
-        res.status,
+        res.statusCode,
         `${decodeURIComponent(location.city)}, ${location.region}, ${location.country}`,
         fakeIp,
         ua.split(" ")[0],
         appliedParams.length > 0 ? `[${appliedParams.join(",")}]` : "",
       );
 
-      return { success: true, status: res.status, hitNumber };
+      return { success: true, status: res.statusCode, hitNumber };
     } catch (err) {
       console.warn(
         new Date().toISOString(),
@@ -434,12 +463,15 @@ export class TrafficSimulator {
 
     const end = Date.now() + minutes * 60 * 1000;
     while (Date.now() < end && this.isRunning) {
+      const hitStart = Date.now();
       await this.doHit(workerId);
+      const elapsed = Date.now() - hitStart;
 
-      // interval per request in ms
+      // interval per request in ms, minus time already spent on the fetch
       const base = 60000 / rate;
       const jitter = Math.round(base * (Math.random() * 0.2 - 0.1)); // ±10%
-      await sleep(Math.max(100, base + jitter));
+      const remaining = Math.max(0, base + jitter - elapsed);
+      if (remaining > 0) await sleep(remaining);
     }
   }
 

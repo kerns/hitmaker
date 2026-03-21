@@ -9,7 +9,7 @@ import { dirname, join } from "path";
 import logUpdate from "log-update";
 import chalk from "chalk";
 import readline from "readline";
-import { getConfig, saveConfig, CONFIG_FIELDS } from "./config.js";
+import { getConfig, saveConfig, CONFIG_FIELDS, DEFAULT_CONFIG } from "./config.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -21,7 +21,7 @@ const WORKER_PATH = join(__dirname, "worker.js");
 let CONFIG = getConfig();
 
 const UPDATE_INTERVAL = 1000; // 1 second between updating stats
-const STARTUP_DELAY = 1000; // 1 second between starting each process
+const STARTUP_DELAY = 100; // small stagger between starting each process
 
 // ============================================================================
 // Helpers
@@ -303,15 +303,17 @@ function renderConfigModal(config, selectedField, isEditing, textInput) {
 
   // Title
   lines.push("");
-  lines.push(chalk.bgYellow.black.bold(" ⚙️  Configuration ".padEnd(width)));
+  lines.push(chalk.bgYellow.black.bold(" Configuration ".padEnd(width)));
   lines.push("");
 
   // Config fields
   CONFIG_FIELDS.forEach((field, index) => {
     // Handle separator (section header)
     if (field.type === "separator") {
-      lines.push("");
-      lines.push(chalk.yellow.bold(`  ── ${field.label} ──`));
+      if (index > 0) lines.push("");
+      const labelPart = chalk.yellow(field.label) + " ";
+      const lineLen = width - 2 - field.label.length - 1;
+      lines.push("  " + labelPart + chalk.gray("─".repeat(Math.max(0, lineLen))));
       return;
     }
 
@@ -359,9 +361,8 @@ function renderConfigModal(config, selectedField, isEditing, textInput) {
       lines.push("  " + chalk.white("◀/▶") + chalk.gray(" Adjust") + "  " + chalk.white("Enter") + chalk.gray(" Save") + "  " + chalk.white("Esc") + chalk.gray(" Cancel"));
     }
   } else {
-    lines.push(
-      "  " + chalk.white("↑/↓") + chalk.gray(" Navigate") + "  " + chalk.white("Enter") + chalk.gray(" Edit") + "  " + chalk.white("S") + chalk.gray(" Save & Apply") + "  " + chalk.white("Esc") + chalk.gray(" Cancel"),
-    );
+    lines.push("  " + chalk.white("↑/↓") + chalk.gray(" Navigate") + "  " + chalk.white("Enter") + chalk.gray(" Edit") + "  " + chalk.white("Esc") + chalk.gray(" Cancel"));
+    lines.push("  " + chalk.white("A") + chalk.gray(" Apply to session") + "  " + chalk.white("S") + chalk.gray(" Set as default") + "  " + chalk.white("R") + chalk.gray(" Restore factory default"));
   }
   lines.push("");
 
@@ -383,7 +384,7 @@ function renderURLParamsEditor(
 
   // Title
   lines.push("");
-  lines.push(chalk.bgCyan.black.bold(" 🔗 URL Parameters ".padEnd(width)));
+  lines.push(chalk.bgCyan.black.bold(" URL Parameters ".padEnd(width)));
   lines.push("");
 
   if (params.length === 0) {
@@ -472,7 +473,7 @@ function renderPayloadListEditor(
 
   // Title
   lines.push("");
-  lines.push(chalk.bgMagenta.black.bold(` 📦 Payloads for ${param.key}=${param.value || "(none)"} `.padEnd(width)));
+  lines.push(chalk.bgMagenta.black.bold(` Payloads for ${param.key}=${param.value || "(none)"} `.padEnd(width)));
   lines.push("");
 
   if (payloads.length === 0) {
@@ -553,7 +554,7 @@ function renderPayloadDetailEditor(
 
   // Title
   lines.push("");
-  lines.push(chalk.bgGreen.black.bold(` 🔧 Payload: ${payload.name || "Unnamed"} (weight: ${payload.weight}) `.padEnd(width)));
+  lines.push(chalk.bgGreen.black.bold(` Payload: ${payload.name || "Unnamed"} (weight: ${payload.weight}) `.padEnd(width)));
   lines.push("");
 
   if (pairs.length === 0) {
@@ -645,7 +646,7 @@ async function runInteractive(links) {
 
   // Config modal state
   let showConfigModal = false;
-  let configModalSelectedField = 0;
+  let configModalSelectedField = 1;
   let configModalIsEditing = false;
   let configModalTextInput = "";
   let configModalDraft = { ...CONFIG };
@@ -1094,29 +1095,38 @@ async function runInteractive(links) {
                 configModalTextInput = ""; // Start with empty field
               }
             }
-          } else if (key.name === "s") {
-            // Save and apply
+          } else if (str === "a" || str === "A" || str === "s" || str === "S") {
+            // Both apply config to session and restart workers
             CONFIG = { ...configModalDraft };
-            if (saveConfig(CONFIG)) {
-              addLog("✓ Configuration saved");
-              // Restart all processes with new config
-              processes.forEach((p, i) => {
-                if (p && !p.killed) {
-                  p.kill();
-                  setTimeout(() => {
-                    const child = spawnWorker(
-                      links[i].url,
-                      statsArray[i],
-                      addLog,
-                    );
-                    processes[i] = child;
-                    statsArray[i].status = "starting";
-                  }, 500);
-                }
-              });
+            if (str === "s" || str === "S") {
+              // S also saves to disk as new defaults
+              if (saveConfig(CONFIG)) {
+                addLog("✓ Settings saved as new defaults");
+              }
+            } else {
+              addLog("✓ Settings applied to session");
             }
+            // Restart all processes with new config
+            processes.forEach((p, i) => {
+              if (p && !p.killed) {
+                p.kill();
+                setTimeout(() => {
+                  const child = spawnWorker(
+                    links[i].url,
+                    statsArray[i],
+                    addLog,
+                  );
+                  processes[i] = child;
+                  statsArray[i].status = "starting";
+                }, 500);
+              }
+            });
             showConfigModal = false;
             configModalIsEditing = false;
+          } else if (str === "r" || str === "R") {
+            // Restore factory defaults
+            configModalDraft = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+            addLog("✓ Factory defaults restored (press A to apply or S to save)");
           } else if (key.name === "escape") {
             // Close config modal
             showConfigModal = false;
@@ -1149,7 +1159,7 @@ async function runInteractive(links) {
       // Open config modal
       if (key.name === "c") {
         showConfigModal = true;
-        configModalSelectedField = 0;
+        configModalSelectedField = 1;
         configModalIsEditing = false;
         configModalDraft = { ...CONFIG };
         render();

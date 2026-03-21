@@ -16,7 +16,7 @@ export const DEFAULT_CONFIG = {
   MAX_PER_MIN: 15,
   CONCURRENT: 1,
   METHOD: "GET",
-  TIMEOUT_MS: 15000,
+  TIMEOUT_MS: 5000,
   DEVICE_RATIO: 50, // 50 = 50% desktop, 50% mobile (of non-unknown traffic)
   UNKNOWN_RATIO: 0, // % of total traffic that uses unknown/unclassifiable device
   MIN_ACTIVE: 5,
@@ -91,6 +91,11 @@ export function getConfig() {
  * Config field definitions for the UI
  */
 export const CONFIG_FIELDS = [
+  // Traffic section
+  {
+    type: "separator",
+    label: "Traffic",
+  },
   {
     key: "MIN_PER_MIN",
     label: "Min Hits/Min",
@@ -117,6 +122,20 @@ export const CONFIG_FIELDS = [
     max: 10,
     step: 1,
     format: (v) => v.toString(),
+  },
+  {
+    key: "TIMEOUT_MS",
+    label: "Timeout (ms)",
+    type: "number",
+    min: 1000,
+    max: 60000,
+    step: 1000,
+    format: (v) => `${v}ms`,
+  },
+  // Requests section
+  {
+    type: "separator",
+    label: "Requests",
   },
   {
     key: "METHOD",
@@ -153,15 +172,6 @@ export const CONFIG_FIELDS = [
     format: (v) => `${(v * 100).toFixed(0)}%`,
   },
   {
-    key: "TIMEOUT_MS",
-    label: "Timeout (ms)",
-    type: "number",
-    min: 1000,
-    max: 60000,
-    step: 1000,
-    format: (v) => `${v}ms`,
-  },
-  {
     key: "URL_PARAMS",
     label: "URL Parameters",
     type: "special",
@@ -173,14 +183,14 @@ export const CONFIG_FIELDS = [
       return `${v.length} configured`;
     },
   },
-  // Activity Pattern section
+  // Schedule section
   {
     type: "separator",
-    label: "Activity Pattern",
+    label: "Schedule",
   },
   {
     key: "MIN_ACTIVE",
-    label: "Minimum Active",
+    label: "Active Min",
     type: "number",
     min: 1,
     max: 120,
@@ -189,7 +199,7 @@ export const CONFIG_FIELDS = [
   },
   {
     key: "MAX_ACTIVE",
-    label: "Maximum Active",
+    label: "Active Max",
     type: "number",
     min: 1,
     max: 120,
@@ -207,7 +217,7 @@ export const CONFIG_FIELDS = [
   },
   {
     key: "MIN_IDLE",
-    label: "Minimum Idle",
+    label: "Idle Min",
     type: "number",
     min: 1,
     max: 120,
@@ -216,7 +226,7 @@ export const CONFIG_FIELDS = [
   },
   {
     key: "MAX_IDLE",
-    label: "Maximum Idle",
+    label: "Idle Max",
     type: "number",
     min: 1,
     max: 2880,
