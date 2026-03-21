@@ -362,7 +362,7 @@ function renderConfigModal(config, selectedField, isEditing, textInput) {
     }
   } else {
     lines.push("  " + chalk.white("↑/↓") + chalk.gray(" Navigate") + "  " + chalk.white("Enter") + chalk.gray(" Edit") + "  " + chalk.white("Esc") + chalk.gray(" Cancel"));
-    lines.push("  " + chalk.white("A") + chalk.gray(" Apply to session") + "  " + chalk.white("S") + chalk.gray(" Set as new default"));
+    lines.push("  " + chalk.white("A") + chalk.gray(" Apply to session") + "  " + chalk.white("S") + chalk.gray(" Set as default") + "  " + chalk.white("R") + chalk.gray(" Restore factory default"));
   }
   lines.push("");
 
@@ -1123,7 +1123,7 @@ async function runInteractive(links) {
             });
             showConfigModal = false;
             configModalIsEditing = false;
-          } else if (str === "f") {
+          } else if (str === "r") {
             // Restore factory defaults
             configModalDraft = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
             addLog("✓ Factory defaults restored (press A to apply or S to save)");
