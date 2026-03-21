@@ -396,8 +396,9 @@ export class TrafficSimulator {
         },
       });
 
-      // Drain response body to release the socket (undici hangs otherwise on manual redirects)
-      await res.text();
+      // Kick off body drain without blocking — undici's body stream on
+      // manual redirect responses hangs for the full socket timeout if awaited
+      res.text().catch(() => {});
 
       console.log(
         new Date().toISOString(),
