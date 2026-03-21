@@ -6,17 +6,18 @@ import http from "http";
 import https from "https";
 import { lookup as dnsLookup } from "dns";
 
-// DNS cache — avoids repeated getaddrinfo calls
+// DNS cache with 60s TTL — avoids repeated getaddrinfo calls
 // (macOS .local mDNS resolution adds ~5s per uncached lookup)
+const DNS_TTL_MS = 60_000;
 const dnsCache = new Map();
 function cachedLookup(hostname, options, callback) {
   const key = `${hostname}:${options.family || 0}`;
   const cached = dnsCache.get(key);
-  if (cached) {
+  if (cached && Date.now() - cached.ts < DNS_TTL_MS) {
     return process.nextTick(callback, null, cached.address, cached.family);
   }
   dnsLookup(hostname, options, (err, address, family) => {
-    if (!err) dnsCache.set(key, { address, family });
+    if (!err) dnsCache.set(key, { address, family, ts: Date.now() });
     callback(err, address, family);
   });
 }
