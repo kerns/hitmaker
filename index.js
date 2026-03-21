@@ -303,7 +303,7 @@ function renderConfigModal(config, selectedField, isEditing, textInput) {
 
   // Title
   lines.push("");
-  lines.push(chalk.inverse.bold(" Configuration ".padEnd(width)));
+  lines.push(chalk.bgYellow.black.bold(" Configuration ".padEnd(width)));
   lines.push("");
 
   // Config fields
@@ -384,7 +384,7 @@ function renderURLParamsEditor(
 
   // Title
   lines.push("");
-  lines.push(chalk.bgCyan.black.bold(" 🔗 URL Parameters ".padEnd(width)));
+  lines.push(chalk.bgCyan.black.bold(" URL Parameters ".padEnd(width)));
   lines.push("");
 
   if (params.length === 0) {
@@ -473,7 +473,7 @@ function renderPayloadListEditor(
 
   // Title
   lines.push("");
-  lines.push(chalk.bgMagenta.black.bold(` 📦 Payloads for ${param.key}=${param.value || "(none)"} `.padEnd(width)));
+  lines.push(chalk.bgMagenta.black.bold(` Payloads for ${param.key}=${param.value || "(none)"} `.padEnd(width)));
   lines.push("");
 
   if (payloads.length === 0) {
@@ -554,7 +554,7 @@ function renderPayloadDetailEditor(
 
   // Title
   lines.push("");
-  lines.push(chalk.bgGreen.black.bold(` 🔧 Payload: ${payload.name || "Unnamed"} (weight: ${payload.weight}) `.padEnd(width)));
+  lines.push(chalk.bgGreen.black.bold(` Payload: ${payload.name || "Unnamed"} (weight: ${payload.weight}) `.padEnd(width)));
   lines.push("");
 
   if (pairs.length === 0) {
