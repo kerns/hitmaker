@@ -397,7 +397,7 @@ export class TrafficSimulator {
       });
 
       // Drain response body to release the socket (undici hangs otherwise on manual redirects)
-      await res.body?.cancel();
+      await res.text();
 
       console.log(
         new Date().toISOString(),
