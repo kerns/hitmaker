@@ -10,6 +10,7 @@ import logUpdate from "log-update";
 import chalk from "chalk";
 import readline from "readline";
 import { getConfig, saveConfig, CONFIG_FIELDS, DEFAULT_CONFIG } from "./config.js";
+import { ProxyPool } from "./proxy.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -118,7 +119,7 @@ function pad(str, width) {
 /**
  * Spawn a worker process to simulate traffic for a single URL
  */
-function spawnWorker(url, stats, onOutput) {
+function spawnWorker(url, stats, onOutput, parentProxyPool) {
   const child = fork(WORKER_PATH, [url], {
     env: {
       ...process.env,
@@ -135,6 +136,10 @@ function spawnWorker(url, stats, onOutput) {
       MIN_IDLE: String(CONFIG.MIN_IDLE),
       MAX_IDLE: String(CONFIG.MAX_IDLE),
       UNIQUE_IP_PROB: String(CONFIG.UNIQUE_IP_PROB),
+      PROXY_MODE: String(CONFIG.PROXY_MODE),
+      PROXY_SERVICE_URL: String(CONFIG.PROXY_SERVICE_URL),
+      PROXY_LIST_URL: String(CONFIG.PROXY_LIST_URL),
+      PROXY_REFRESH_MIN: String(CONFIG.PROXY_REFRESH_MIN),
       URL_PARAMS: JSON.stringify(CONFIG.URL_PARAMS),
     },
     stdio: ["pipe", "pipe", "pipe", "ipc"],
@@ -156,6 +161,12 @@ function spawnWorker(url, stats, onOutput) {
         stats.hits++;
         stats.lastHit = Date.now();
         stats.status = "active";
+      }
+      // Count 4xx/5xx as errors
+      const statusMatch = line.match(/ (4\d{2}|5\d{2}) /);
+      if (statusMatch) {
+        stats.errors++;
+        stats.status = "active"; // still running, just failing
       }
       // Extract current rate from ACTIVE messages
       if (line.includes("ACTIVE")) {
@@ -181,9 +192,24 @@ function spawnWorker(url, stats, onOutput) {
     onOutput(data.toString());
   });
 
+  // Listen for IPC messages from worker (proxy failures)
+  child.on("message", (msg) => {
+    if (msg.type === "proxy_failed" && parentProxyPool) {
+      parentProxyPool.markFailed(msg.url);
+    }
+  });
+
   child.on("exit", (code) => {
     stats.status = code === 0 ? "stopped" : "crashed";
   });
+
+  // Send current proxy list if pool mode
+  if (parentProxyPool && parentProxyPool.mode !== "none" && parentProxyPool.mode !== "service") {
+    const list = parentProxyPool.getAliveList();
+    if (list.length > 0) {
+      child.send({ type: "proxy_list", list });
+    }
+  }
 
   return child;
 }
@@ -216,11 +242,14 @@ function renderDashboard(links, statsArray, processes, selectedIndex, logs) {
   lines.push("");
 
   // Header with summary stats
+  const proxyLabel = CONFIG.PROXY_MODE !== "none"
+    ? chalk.green(` │ Proxy: ${CONFIG.PROXY_MODE}`)
+    : chalk.gray(" │ Proxy: off");
   lines.push(
     chalk.bgCyan.black.bold(" 💥 HITMAKER ") +
       chalk.gray(
         ` Running: ${running}/${links.length} │ Total Hits: ${totalHits}`,
-      ),
+      ) + proxyLabel,
   );
 
   // Table header
@@ -317,6 +346,11 @@ function renderConfigModal(config, selectedField, isEditing, textInput) {
       return;
     }
 
+    // Hide fields that don't apply to the current mode
+    if (field.visibleWhen && !field.visibleWhen(config)) {
+      return;
+    }
+
     const isSelected = index === selectedField;
     const value = config[field.key];
     const formattedValue = field.format(value);
@@ -328,7 +362,11 @@ function renderConfigModal(config, selectedField, isEditing, textInput) {
 
     let valueDisplay;
     if (isSelected && isEditing) {
-      if (field.type === "number") {
+      if (field.type === "text") {
+        // Free-text input
+        const hint = textInput || `(current: ${value || "empty"})`;
+        valueDisplay = chalk.bgWhite.black(` ${hint}_ `);
+      } else if (field.type === "number") {
         // Text input for numbers - show current value as hint
         const hint = textInput || `(current: ${value})`;
         valueDisplay = chalk.bgWhite.black(` ${hint}_ `);
@@ -353,7 +391,9 @@ function renderConfigModal(config, selectedField, isEditing, textInput) {
   lines.push(chalk.gray("─".repeat(width)));
   if (isEditing) {
     const field = CONFIG_FIELDS[selectedField];
-    if (field.type === "number") {
+    if (field.type === "text") {
+      lines.push("  " + chalk.gray("Type value") + "  " + chalk.white("Enter") + chalk.gray(" Save") + "  " + chalk.white("Esc") + chalk.gray(" Cancel"));
+    } else if (field.type === "number") {
       lines.push("  " + chalk.gray("Type number") + "  " + chalk.white("Enter") + chalk.gray(" Save") + "  " + chalk.white("Esc") + chalk.gray(" Cancel"));
     } else if (field.type === "special") {
       lines.push("  " + chalk.white("Enter") + chalk.gray(" to manage") + "  " + chalk.white("Esc") + chalk.gray(" Cancel"));
@@ -679,10 +719,45 @@ async function runInteractive(links) {
     }
   };
 
+  // Initialize parent-side proxy pool (fetches & health-checks ONCE for all workers)
+  let parentProxyPool = new ProxyPool(CONFIG);
+  if (CONFIG.PROXY_MODE === "free" || CONFIG.PROXY_MODE === "url") {
+    // Show a spinner while fetching & health-checking (can take 30-60s)
+    const spinFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+    let spinIdx = 0;
+    const spinTimer = setInterval(() => {
+      const frame = spinFrames[spinIdx++ % spinFrames.length];
+      const stats = parentProxyPool.getStats();
+      const status = stats.total > 0
+        ? `${stats.alive} alive / ${stats.total} fetched`
+        : "fetching proxy lists...";
+      logUpdate(`\n  ${chalk.cyan(frame)} ${chalk.white("Building proxy pool...")} ${chalk.gray(status)}\n`);
+    }, 80);
+    await parentProxyPool.init();
+    clearInterval(spinTimer);
+    logUpdate.clear();
+    addLog(`Proxy pool: ${parentProxyPool.getAliveList().length} alive proxies`);
+
+    // Refresh periodically and broadcast updated list to all workers
+    const originalRefresh = parentProxyPool.refresh.bind(parentProxyPool);
+    parentProxyPool.refresh = async () => {
+      const list = await originalRefresh();
+      for (const p of processes) {
+        if (p && !p.killed && p.connected) {
+          try { p.send({ type: "proxy_list", list }); } catch {}
+        }
+      }
+      addLog(`Proxy pool refreshed: ${list.length} alive`);
+      return list;
+    };
+  } else {
+    await parentProxyPool.init();
+  }
+
   // Stagger process startup to avoid overwhelming the target
   for (let i = 0; i < links.length; i++) {
     await new Promise((r) => setTimeout(r, STARTUP_DELAY));
-    const child = spawnWorker(links[i].url, statsArray[i], addLog);
+    const child = spawnWorker(links[i].url, statsArray[i], addLog, parentProxyPool);
     processes.push(child);
     addLog(`[${links[i].name}] Process started (PID: ${child.pid})`);
   }
@@ -1009,7 +1084,22 @@ async function runInteractive(links) {
             return;
           }
 
-          if (field.type === "number") {
+          if (field.type === "text") {
+            // Free-text input mode
+            if (key.name === "return") {
+              configModalDraft[field.key] = configModalTextInput;
+              configModalIsEditing = false;
+              configModalTextInput = "";
+            } else if (key.name === "escape") {
+              configModalIsEditing = false;
+              configModalTextInput = "";
+            } else if (key.name === "backspace") {
+              configModalTextInput = configModalTextInput.slice(0, -1);
+            } else if (str && str.length === 1 && !key.ctrl && !key.meta) {
+              configModalTextInput += str;
+            }
+            render();
+          } else if (field.type === "number") {
             // Text input mode
             if (key.name === "return") {
               const num = parseInt(configModalTextInput);
@@ -1071,8 +1161,8 @@ async function runInteractive(links) {
           // Navigating fields
           if (key.name === "up") {
             let newIndex = configModalSelectedField - 1;
-            // Skip separator fields
-            while (newIndex >= 0 && CONFIG_FIELDS[newIndex].type === "separator") {
+            // Skip separators and hidden fields
+            while (newIndex >= 0 && (CONFIG_FIELDS[newIndex].type === "separator" || (CONFIG_FIELDS[newIndex].visibleWhen && !CONFIG_FIELDS[newIndex].visibleWhen(configModalDraft)))) {
               newIndex--;
             }
             if (newIndex >= 0) {
@@ -1080,8 +1170,8 @@ async function runInteractive(links) {
             }
           } else if (key.name === "down") {
             let newIndex = configModalSelectedField + 1;
-            // Skip separator fields
-            while (newIndex < CONFIG_FIELDS.length && CONFIG_FIELDS[newIndex].type === "separator") {
+            // Skip separators and hidden fields
+            while (newIndex < CONFIG_FIELDS.length && (CONFIG_FIELDS[newIndex].type === "separator" || (CONFIG_FIELDS[newIndex].visibleWhen && !CONFIG_FIELDS[newIndex].visibleWhen(configModalDraft)))) {
               newIndex++;
             }
             if (newIndex < CONFIG_FIELDS.length) {
@@ -1091,7 +1181,7 @@ async function runInteractive(links) {
             const field = CONFIG_FIELDS[configModalSelectedField];
             if (field.type !== "separator") {
               configModalIsEditing = true;
-              if (field.type === "number") {
+              if (field.type === "number" || field.type === "text") {
                 configModalTextInput = ""; // Start with empty field
               }
             }
@@ -1107,20 +1197,34 @@ async function runInteractive(links) {
               addLog("✓ Settings applied to session");
             }
             // Restart all processes with new config
-            processes.forEach((p, i) => {
-              if (p && !p.killed) {
-                p.kill();
-                setTimeout(() => {
-                  const child = spawnWorker(
-                    links[i].url,
-                    statsArray[i],
-                    addLog,
-                  );
-                  processes[i] = child;
-                  statsArray[i].status = "starting";
-                }, 500);
+            // Re-initialize proxy pool if mode changed
+            parentProxyPool.destroy();
+            parentProxyPool = new ProxyPool(CONFIG);
+            const reinitAndRestart = async () => {
+              if (CONFIG.PROXY_MODE === "free" || CONFIG.PROXY_MODE === "url") {
+                addLog("Fetching and health-checking proxy pool...");
+                await parentProxyPool.init();
+                addLog(`Proxy pool: ${parentProxyPool.getAliveList().length} alive proxies`);
+              } else {
+                await parentProxyPool.init();
               }
-            });
+              processes.forEach((p, i) => {
+                if (p && !p.killed) {
+                  p.kill();
+                  setTimeout(() => {
+                    const child = spawnWorker(
+                      links[i].url,
+                      statsArray[i],
+                      addLog,
+                      parentProxyPool,
+                    );
+                    processes[i] = child;
+                    statsArray[i].status = "starting";
+                  }, 500);
+                }
+              });
+            };
+            reinitAndRestart();
             showConfigModal = false;
             configModalIsEditing = false;
           } else if (str === "r" || str === "R") {
@@ -1143,16 +1247,19 @@ async function runInteractive(links) {
       // Quit
       if (key.name === "q" || (key.ctrl && key.name === "c")) {
         logUpdate.clear();
+        parentProxyPool.destroy();
         console.log(chalk.yellow("🛑 Shutting down all processes..."));
         processes.forEach((p) => p && p.kill());
-        console.log("\n📊 All The Hits:");
+        const totalHits = statsArray.reduce((sum, s) => sum + s.hits, 0);
+        const totalErrors = statsArray.reduce((sum, s) => sum + s.errors, 0);
+        console.log(`\n📊 ${links.length} URL${links.length !== 1 ? "s" : ""} — ${totalHits} hits — ${totalErrors} errors`);
         console.log("");
         links.forEach((link, i) => {
-          const name = pad(link.name, 20);
-          const hits = pad(`Hits: ${statsArray[i].hits}`, 15);
-          const errors = `Errors: ${statsArray[i].errors}`;
-          console.log(`  ${name}${hits}${errors}`);
+          const hits = pad(`${statsArray[i].hits} hits`, 12);
+          const errors = pad(`${statsArray[i].errors} errors`, 12);
+          console.log(`  ${hits}${errors}${chalk.gray(link.url)}`);
         });
+        console.log("");
         process.exit(0);
       }
 
@@ -1184,6 +1291,7 @@ async function runInteractive(links) {
             links[selectedIndex].url,
             statsArray[selectedIndex],
             addLog,
+            parentProxyPool,
           );
           processes[selectedIndex] = child;
           statsArray[selectedIndex].status = "starting";

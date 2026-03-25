@@ -5,6 +5,7 @@
 import http from "http";
 import https from "https";
 import { lookup as dnsLookup } from "dns";
+import { WorkerProxyPool, createProxyAgent } from "./proxy.js";
 
 // DNS cache with 60s TTL — avoids repeated getaddrinfo calls
 // (macOS .local mDNS resolution adds ~5s per uncached lookup)
@@ -51,6 +52,10 @@ export function getConfig() {
     MIN_IDLE: Number(process.env.MIN_IDLE || 2),
     MAX_IDLE: Number(process.env.MAX_IDLE || 45),
     UNIQUE_IP_PROB: Number(process.env.UNIQUE_IP_PROB || 0.95), // 95% unique visitors
+    PROXY_MODE: process.env.PROXY_MODE || "none",
+    PROXY_SERVICE_URL: process.env.PROXY_SERVICE_URL || process.env.PROXY_URL || "",
+    PROXY_LIST_URL: process.env.PROXY_LIST_URL || "",
+    PROXY_REFRESH_MIN: Number(process.env.PROXY_REFRESH_MIN || 10),
     URL_PARAMS: urlParams,
   };
 }
@@ -204,6 +209,42 @@ const LOCATIONS = [
     latitude: "48.8566",
     longitude: "2.3522",
   },
+  // Additional international locations
+  {
+    country: "NL",
+    city: "Amsterdam",
+    region: "NH",
+    latitude: "52.3676",
+    longitude: "4.9041",
+  },
+  {
+    country: "SE",
+    city: "Stockholm",
+    region: "AB",
+    latitude: "59.3293",
+    longitude: "18.0686",
+  },
+  {
+    country: "JP",
+    city: "Tokyo",
+    region: "13",
+    latitude: "35.6762",
+    longitude: "139.6503",
+  },
+  {
+    country: "BR",
+    city: "S%C3%A3o%20Paulo",
+    region: "SP",
+    latitude: "-23.5505",
+    longitude: "-46.6333",
+  },
+  {
+    country: "AU",
+    city: "Sydney",
+    region: "NSW",
+    latitude: "-33.8688",
+    longitude: "151.2093",
+  },
 ];
 
 /**
@@ -237,6 +278,28 @@ const IP_FIRST_OCTETS = {
     2, 5, 31, 37, 46, 62, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89,
     90, 91, 92, 93, 94, 95, 109, 176, 178, 185, 188, 193, 194, 195, 212, 213,
     217,
+  ],
+  NL: [
+    2, 5, 31, 37, 46, 62, 77, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 91,
+    92, 93, 94, 95, 109, 145, 176, 178, 185, 188, 193, 194, 195, 212, 213,
+  ],
+  SE: [
+    2, 5, 31, 37, 46, 62, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88,
+    89, 91, 92, 93, 94, 95, 109, 176, 178, 185, 188, 193, 194, 195, 212, 213,
+  ],
+  JP: [
+    1, 14, 27, 36, 42, 49, 58, 59, 60, 61, 101, 106, 110, 111, 113, 114,
+    115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 133, 150,
+    153, 157, 160, 163, 175, 180, 182, 183, 202, 210, 211, 218, 219, 220,
+  ],
+  BR: [
+    131, 138, 139, 143, 146, 152, 155, 161, 168, 170, 177, 179, 186, 187,
+    189, 190, 191, 200, 201,
+  ],
+  AU: [
+    1, 14, 27, 43, 49, 58, 59, 60, 61, 101, 103, 106, 110, 112, 113, 114,
+    115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 144, 150, 175,
+    180, 182, 192, 202, 203, 210, 211, 218, 219, 220,
   ],
 };
 
@@ -323,6 +386,8 @@ export class TrafficSimulator {
     this.hitCounter = 0;
     this.workers = [];
     this.isRunning = false;
+    this.proxyPool = new WorkerProxyPool(this.config);
+    this.proxyAgentCache = new Map(); // cache agents by proxy URL
   }
 
   /**
@@ -396,26 +461,51 @@ export class TrafficSimulator {
     const parsedUrl = new URL(url);
     const doRequest = parsedUrl.protocol === "https:" ? https.request : http.request;
 
+    // Get proxy for this request (null if mode=none)
+    const proxyUrl = this.proxyPool.getProxy();
+    let agent = undefined;
+    if (proxyUrl) {
+      try {
+        // Cache agents to avoid creating new ones per request
+        if (!this.proxyAgentCache.has(proxyUrl)) {
+          this.proxyAgentCache.set(proxyUrl, await createProxyAgent(proxyUrl, parsedUrl.protocol));
+        }
+        agent = this.proxyAgentCache.get(proxyUrl);
+      } catch (err) {
+        // Fall back to direct connection if agent creation fails
+        this.proxyPool.markFailed(proxyUrl);
+      }
+    }
+
+    // When using a real proxy, don't spoof any headers — let the proxy's real IP
+    // and Vercel's own geo-detection handle everything.
+    // When not using proxy (mode=none), keep the full header spoofing behavior.
+    const useRealProxy = !!agent;
+    const headers = {
+      "User-Agent": ua,
+      "Accept-Language": al,
+      Referer: ref,
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    };
+    if (!useRealProxy) {
+      // Full header spoofing — only when no real proxy
+      headers["x-forwarded-for"] = fakeIp;
+      headers["x-real-ip"] = fakeIp;
+      headers["x-vercel-ip-country"] = location.country;
+      headers["x-vercel-ip-city"] = location.city;
+      headers["x-vercel-ip-country-region"] = location.region;
+      headers["x-vercel-ip-latitude"] = location.latitude;
+      headers["x-vercel-ip-longitude"] = location.longitude;
+    }
+
     try {
       const res = await new Promise((resolve, reject) => {
         const req = doRequest(url, {
           method: this.config.METHOD,
           signal: controller.signal,
-          lookup: cachedLookup,
-          headers: {
-            "User-Agent": ua,
-            "Accept-Language": al,
-            Referer: ref,
-            Accept:
-              "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "x-forwarded-for": fakeIp,
-            "x-real-ip": fakeIp,
-            "x-vercel-ip-country": location.country,
-            "x-vercel-ip-city": location.city,
-            "x-vercel-ip-country-region": location.region,
-            "x-vercel-ip-latitude": location.latitude,
-            "x-vercel-ip-longitude": location.longitude,
-          },
+          lookup: agent ? undefined : cachedLookup, // skip DNS cache when proxied
+          agent,
+          headers,
         }, (response) => {
           response.resume(); // drain body immediately
           resolve(response);
@@ -424,19 +514,24 @@ export class TrafficSimulator {
         req.end();
       });
 
+      const ipLabel = useRealProxy ? "PROXY" : fakeIp;
+      const locationLabel = useRealProxy ? "→ proxy" : `${decodeURIComponent(location.city)}, ${location.region}, ${location.country}`;
       console.log(
         new Date().toISOString(),
         `W${workerId}`,
         `#${hitNumber}`,
         res.statusCode,
-        `${decodeURIComponent(location.city)}, ${location.region}, ${location.country}`,
-        fakeIp,
+        locationLabel,
+        ipLabel,
         ua.split(" ")[0],
         appliedParams.length > 0 ? `[${appliedParams.join(",")}]` : "",
       );
 
       return { success: true, status: res.statusCode, hitNumber };
     } catch (err) {
+      // Mark proxy as failed so pool can rotate away from it
+      if (proxyUrl) this.proxyPool.markFailed(proxyUrl);
+
       console.warn(
         new Date().toISOString(),
         `W${workerId}`,
@@ -523,6 +618,9 @@ export class TrafficSimulator {
     console.log(`Starting traffic simulator for ${this.targetUrl}`);
     console.log("Config:", this.config);
 
+    // Initialize proxy pool (no-op if mode=none)
+    await this.proxyPool.init();
+
     for (let i = 0; i < this.config.CONCURRENT; i++) {
       const worker = this.workerLoop(i + 1).catch((e) =>
         console.error(`Worker ${i + 1} crashed:`, e),
@@ -537,6 +635,8 @@ export class TrafficSimulator {
    */
   stop() {
     this.isRunning = false;
+    this.proxyPool.destroy();
+    this.proxyAgentCache.clear();
     console.log("Stopping simulator...");
   }
 

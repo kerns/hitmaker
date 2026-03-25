@@ -25,6 +25,10 @@ export const DEFAULT_CONFIG = {
   MIN_IDLE: 2,
   MAX_IDLE: 45,
   UNIQUE_IP_PROB: 0.95,
+  PROXY_MODE: "none",           // "none" | "free" | "url" | "service"
+  PROXY_SERVICE_URL: "",        // rotating proxy endpoint (service mode) — persists across mode switches
+  PROXY_LIST_URL: "",           // proxy list URL or file path (url mode)
+  PROXY_REFRESH_MIN: 10,       // how often to refresh free proxy list (minutes)
   URL_PARAMS: [
     { key: "qr", value: "1", probability: 35 },
   ],
@@ -83,6 +87,10 @@ export function getConfig() {
     MIN_IDLE: Number(process.env.MIN_IDLE || saved.MIN_IDLE),
     MAX_IDLE: Number(process.env.MAX_IDLE || saved.MAX_IDLE),
     UNIQUE_IP_PROB: Number(process.env.UNIQUE_IP_PROB || saved.UNIQUE_IP_PROB),
+    PROXY_MODE: process.env.PROXY_MODE || saved.PROXY_MODE || DEFAULT_CONFIG.PROXY_MODE,
+    PROXY_SERVICE_URL: process.env.PROXY_SERVICE_URL || process.env.PROXY_URL || saved.PROXY_SERVICE_URL || saved.PROXY_URL || DEFAULT_CONFIG.PROXY_SERVICE_URL,
+    PROXY_LIST_URL: process.env.PROXY_LIST_URL || saved.PROXY_LIST_URL || DEFAULT_CONFIG.PROXY_LIST_URL,
+    PROXY_REFRESH_MIN: Number(process.env.PROXY_REFRESH_MIN || saved.PROXY_REFRESH_MIN || DEFAULT_CONFIG.PROXY_REFRESH_MIN),
     URL_PARAMS: saved.URL_PARAMS || DEFAULT_CONFIG.URL_PARAMS,
   };
 }
@@ -182,6 +190,45 @@ export const CONFIG_FIELDS = [
       }
       return `${v.length} configured`;
     },
+  },
+  // Proxy section
+  {
+    type: "separator",
+    label: "Proxy",
+  },
+  {
+    key: "PROXY_MODE",
+    label: "Proxy Mode",
+    type: "select",
+    options: ["none", "free", "url", "service"],
+    format: (v) => {
+      const labels = { none: "Off (header spoof)", free: "Free proxies", url: "Custom list", service: "Rotating service" };
+      return labels[v] || v;
+    },
+  },
+  {
+    key: "PROXY_SERVICE_URL",
+    label: "Service URL",
+    type: "text",
+    visibleWhen: (config) => config.PROXY_MODE === "service",
+    format: (v) => v ? (v.length > 35 ? v.slice(0, 32) + "..." : v) : "(not set)",
+  },
+  {
+    key: "PROXY_LIST_URL",
+    label: "List URL/File",
+    type: "text",
+    visibleWhen: (config) => config.PROXY_MODE === "url",
+    format: (v) => v ? (v.length > 35 ? v.slice(0, 32) + "..." : v) : "(not set)",
+  },
+  {
+    key: "PROXY_REFRESH_MIN",
+    label: "Refresh Interval",
+    type: "number",
+    min: 1,
+    max: 60,
+    step: 1,
+    visibleWhen: (config) => config.PROXY_MODE === "free" || config.PROXY_MODE === "url",
+    format: (v) => `${v} min`,
   },
   // Schedule section
   {

@@ -15,6 +15,13 @@ if (!targetUrl) {
 // Create and start simulator
 const simulator = new TrafficSimulator(targetUrl);
 
+// Listen for IPC messages from parent (proxy list updates)
+process.on("message", (msg) => {
+  if (msg.type === "proxy_list") {
+    simulator.proxyPool.setProxyList(msg.list);
+  }
+});
+
 // Handle graceful shutdown
 process.on("SIGTERM", () => {
   simulator.stop();
