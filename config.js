@@ -7,6 +7,7 @@ import { join } from "path";
 
 const CONFIG_DIR = join(homedir(), ".hitmaker");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
+const LOCAL_CONFIG_FILE = ".hitmaker.json";
 
 /**
  * Default configuration values
@@ -35,19 +36,67 @@ export const DEFAULT_CONFIG = {
 };
 
 /**
+ * Load local config from .hitmaker.json in the current working directory
+ * Returns null if no local config exists
+ */
+export function loadLocalConfig() {
+  const localPath = join(process.cwd(), LOCAL_CONFIG_FILE);
+  if (existsSync(localPath)) {
+    try {
+      return JSON.parse(readFileSync(localPath, "utf-8"));
+    } catch (err) {
+      console.warn("Failed to load local config:", err.message);
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
  * Load saved configuration from disk
+ * Priority: local (.hitmaker.json) > global (~/.hitmaker/config.json) > defaults
  */
 export function loadConfig() {
+  let config = { ...DEFAULT_CONFIG };
+
+  // Layer 1: global config
   if (existsSync(CONFIG_FILE)) {
     try {
       const saved = JSON.parse(readFileSync(CONFIG_FILE, "utf-8"));
-      return { ...DEFAULT_CONFIG, ...saved };
+      config = { ...config, ...saved };
     } catch (err) {
-      console.warn("Failed to load config, using defaults:", err.message);
-      return { ...DEFAULT_CONFIG };
+      console.warn("Failed to load global config, using defaults:", err.message);
     }
   }
-  return { ...DEFAULT_CONFIG };
+
+  // Layer 2: local config (overrides global)
+  const local = loadLocalConfig();
+  if (local) {
+    config = { ...config, ...local };
+  }
+
+  return config;
+}
+
+/**
+ * Check if a local config file exists in the current directory
+ */
+export function hasLocalConfig() {
+  return existsSync(join(process.cwd(), LOCAL_CONFIG_FILE));
+}
+
+/**
+ * Save configuration to a local .hitmaker.json in the current directory
+ */
+export function saveLocalConfig(config) {
+  try {
+    const localPath = join(process.cwd(), LOCAL_CONFIG_FILE);
+    writeFileSync(localPath, JSON.stringify(config, null, 2));
+    return true;
+  } catch (err) {
+    console.error("Failed to save local config:", err.message);
+    return false;
+  }
 }
 
 /**

@@ -10,7 +10,7 @@ Traffic simulation tool for testing analytics, redirect services, and link track
 - Configurable IP uniqueness to simulate unique visitors
 - Phase-based traffic alternating between active and idle periods
 - Interactive controls for navigation, pause/restart, and monitoring
-- Persistent configuration saved between sessions
+- Persistent configuration (global or per-directory local config)
 
 ## Installation
 
@@ -40,6 +40,11 @@ hitmaker links.txt
 hitmaker https://example.com/direct links.txt https://example.com/another
 ```
 
+**Open config editor** (no traffic)
+```bash
+hitmaker --config
+```
+
 ## Interactive Controls
 
 | Key | Action |
@@ -51,9 +56,36 @@ hitmaker https://example.com/direct links.txt https://example.com/another
 
 ## Configuration
 
-Press `C` while running to open the interactive configuration modal. Settings are persisted to `~/.hitmaker/config.json`.
+Press `C` while running to open the interactive configuration modal, or run `hitmaker --config` to open it standalone without starting traffic.
 
-You can also use environment variables:
+### Saving Settings
+
+When saving config, press `S` to save, then choose:
+
+| Key | Action |
+|-----|--------|
+| G | Save globally (`~/.hitmaker/config.json` — applies everywhere) |
+| L | Save locally (`.hitmaker.json` — only this directory) |
+
+Other config actions:
+
+| Key | Action |
+|-----|--------|
+| A | Apply to current session only (not saved) |
+| R | Restore factory defaults |
+
+### Config Priority
+
+Settings are resolved in this order (highest priority first):
+
+1. **Environment variables** — `MIN_PER_MIN=50 hitmaker ...`
+2. **Local config** — `.hitmaker.json` in the current working directory
+3. **Global config** — `~/.hitmaker/config.json`
+4. **Defaults**
+
+Local configs are useful for automation or project-specific setups where you want different settings than your global defaults.
+
+### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -61,7 +93,7 @@ You can also use environment variables:
 | `MAX_PER_MIN` | 15 | Maximum hits per minute (active phase) |
 | `CONCURRENT` | 1 | Concurrent workers per link |
 | `METHOD` | GET | HTTP method (GET, HEAD, POST) |
-| `TIMEOUT_MS` | 15000 | Request timeout (ms) |
+| `TIMEOUT_MS` | 5000 | Request timeout (ms) |
 | `DEVICE_RATIO` | 50 | Desktop percentage of non-unknown traffic (0-100) |
 | `UNKNOWN_RATIO` | 0 | Percentage of traffic from unknown devices — bots, crawlers, CLI tools (0-100) |
 | `UNIQUE_IP_PROB` | 0.95 | Probability of unique IP (0.0-1.0) |
@@ -70,6 +102,21 @@ You can also use environment variables:
 | `IDLE_ODDS` | 0.5 | Probability of entering idle phase (0.0-1.0) |
 | `MIN_IDLE` | 2 | Minimum idle phase duration (minutes) |
 | `MAX_IDLE` | 45 | Maximum idle phase duration (minutes) |
+| `PROXY_MODE` | none | Proxy mode: `none` (header spoof), `free`, `url`, `service` |
+| `PROXY_SERVICE_URL` | | Rotating proxy endpoint (for `service` mode) |
+| `PROXY_LIST_URL` | | Proxy list URL or file path (for `url` mode) |
+| `PROXY_REFRESH_MIN` | 10 | How often to refresh proxy list (minutes, for `free`/`url` modes) |
+
+### Proxy Modes
+
+| Mode | Description |
+|------|-------------|
+| `none` | No proxy — spoofs geo headers (`x-forwarded-for`, `x-vercel-ip-*`) directly |
+| `free` | Auto-fetches free proxies from ProxyScrape, health-checks them |
+| `url` | Custom proxy list from a URL or local file |
+| `service` | Rotating proxy service (e.g. Bright Data, Oxylabs) via a single endpoint |
+
+In `none` mode (default), requests go directly from your machine with spoofed IP/geo headers. This is fast but doesn't test real geographic routing. The other modes route traffic through actual proxies for realistic latency and geolocation.
 
 **Simulate returning visitors:**
 ```bash
@@ -182,7 +229,7 @@ Config (C) → URL Parameters (Enter) → Select param → P (Payloads)
     → Payload Detail: ↑/↓ Navigate, Enter Edit, +/- Add/Delete key-value pairs
 ```
 
-**Example config** (`~/.hitmaker/config.json`):
+**Example config** (`~/.hitmaker/config.json` or `.hitmaker.json`):
 ```json
 {
   "URL_PARAMS": [

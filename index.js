@@ -9,7 +9,7 @@ import { dirname, join } from "path";
 import logUpdate from "log-update";
 import chalk from "chalk";
 import readline from "readline";
-import { getConfig, saveConfig, CONFIG_FIELDS, DEFAULT_CONFIG } from "./config.js";
+import { getConfig, saveConfig, saveLocalConfig, hasLocalConfig, CONFIG_FIELDS, DEFAULT_CONFIG } from "./config.js";
 import { ProxyPool } from "./proxy.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -326,7 +326,7 @@ function renderDashboard(links, statsArray, processes, selectedIndex, logs) {
 /**
  * Render the configuration modal
  */
-function renderConfigModal(config, selectedField, isEditing, textInput) {
+function renderConfigModal(config, selectedField, isEditing, textInput, savePrompt = false, configOnly = false) {
   const lines = [];
   const width = 60;
 
@@ -400,9 +400,15 @@ function renderConfigModal(config, selectedField, isEditing, textInput) {
     } else {
       lines.push("  " + chalk.white("◀/▶") + chalk.gray(" Adjust") + "  " + chalk.white("Enter") + chalk.gray(" Save") + "  " + chalk.white("Esc") + chalk.gray(" Cancel"));
     }
+  } else if (savePrompt) {
+    lines.push("  " + chalk.yellow.bold("Save where?"));
+    lines.push("  " + chalk.white("G") + chalk.gray(" Global (~/.hitmaker/config.json — applies everywhere)"));
+    lines.push("  " + chalk.white("L") + chalk.gray(" Local (.hitmaker.json — only this directory)"));
+    lines.push("  " + chalk.white("Esc") + chalk.gray(" Cancel"));
   } else {
-    lines.push("  " + chalk.white("↑/↓") + chalk.gray(" Navigate") + "  " + chalk.white("Enter") + chalk.gray(" Edit") + "  " + chalk.white("Esc") + chalk.gray(" Cancel"));
-    lines.push("  " + chalk.white("A") + chalk.gray(" Apply to session") + "  " + chalk.white("S") + chalk.gray(" Set as default") + "  " + chalk.white("R") + chalk.gray(" Restore factory default"));
+    lines.push("  " + chalk.white("↑/↓") + chalk.gray(" Navigate") + "  " + chalk.white("Enter") + chalk.gray(" Edit") + "  " + chalk.white("Esc") + chalk.gray(configOnly ? " Quit" : " Cancel"));
+    const applyHint = configOnly ? "" : chalk.white("A") + chalk.gray(" Apply to session") + "  ";
+    lines.push("  " + applyHint + chalk.white("S") + chalk.gray(" Save as default") + "  " + chalk.white("R") + chalk.gray(" Restore factory default"));
   }
   lines.push("");
 
@@ -661,12 +667,21 @@ function renderPayloadDetailEditor(
 /**
  * Run the interactive multi-link simulator
  */
-async function runInteractive(links) {
-  console.log(
-    chalk.cyan(`💥 Starting Hitmaker with ${links.length} link(s)...`),
-  );
+async function runInteractive(links, { openConfig = false } = {}) {
+  const configOnly = openConfig && links.length === 0;
 
-  if (!existsSync(WORKER_PATH)) {
+  if (configOnly) {
+    console.log(chalk.cyan.bold("\n💥 Hitmaker – Configuration\n"));
+  } else {
+    console.log(
+      chalk.cyan(`💥 Starting Hitmaker with ${links.length} link(s)...`),
+    );
+  }
+  if (hasLocalConfig()) {
+    console.log(chalk.yellow("  Using local config: .hitmaker.json"));
+  }
+
+  if (!configOnly && !existsSync(WORKER_PATH)) {
     console.error(chalk.red(`Error: worker.js not found at ${WORKER_PATH}`));
     process.exit(1);
   }
@@ -685,10 +700,11 @@ async function runInteractive(links) {
   let selectedIndex = 0;
 
   // Config modal state
-  let showConfigModal = false;
+  let showConfigModal = configOnly; // Open immediately in config-only mode
   let configModalSelectedField = 1;
   let configModalIsEditing = false;
   let configModalTextInput = "";
+  let configModalSavePrompt = false; // true when showing "Global or Local?" after pressing S
   let configModalDraft = { ...CONFIG };
 
   // URL params editor state
@@ -720,7 +736,8 @@ async function runInteractive(links) {
   };
 
   // Initialize parent-side proxy pool (fetches & health-checks ONCE for all workers)
-  let parentProxyPool = new ProxyPool(CONFIG);
+  // Skip in config-only mode
+  let parentProxyPool = configOnly ? { init: async () => {}, destroy: () => {}, getAliveList: () => [], getStats: () => ({ total: 0, alive: 0 }), refresh: async () => [] } : new ProxyPool(CONFIG);
   if (CONFIG.PROXY_MODE === "free" || CONFIG.PROXY_MODE === "url") {
     // Show a spinner while fetching & health-checking (can take 30-60s)
     const spinFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -804,6 +821,8 @@ async function runInteractive(links) {
           configModalSelectedField,
           configModalIsEditing,
           configModalTextInput,
+          configModalSavePrompt,
+          configOnly,
         ),
       );
     } else {
@@ -1185,19 +1204,66 @@ async function runInteractive(links) {
                 configModalTextInput = ""; // Start with empty field
               }
             }
-          } else if (str === "a" || str === "A" || str === "s" || str === "S") {
-            // Both apply config to session and restart workers
-            CONFIG = { ...configModalDraft };
-            if (str === "s" || str === "S") {
-              // S also saves to disk as new defaults
-              if (saveConfig(CONFIG)) {
-                addLog("✓ Settings saved as new defaults");
+          } else if (configModalSavePrompt) {
+            // Second step: choose save target
+            const applyAndRestart = (logMsg) => {
+              CONFIG = { ...configModalDraft };
+              addLog(logMsg);
+              parentProxyPool.destroy();
+              parentProxyPool = new ProxyPool(CONFIG);
+              const reinitAndRestart = async () => {
+                if (CONFIG.PROXY_MODE === "free" || CONFIG.PROXY_MODE === "url") {
+                  addLog("Fetching and health-checking proxy pool...");
+                  await parentProxyPool.init();
+                  addLog(`Proxy pool: ${parentProxyPool.getAliveList().length} alive proxies`);
+                } else {
+                  await parentProxyPool.init();
+                }
+                processes.forEach((p, i) => {
+                  if (p && !p.killed) {
+                    p.kill();
+                    setTimeout(() => {
+                      const child = spawnWorker(
+                        links[i].url,
+                        statsArray[i],
+                        addLog,
+                        parentProxyPool,
+                      );
+                      processes[i] = child;
+                      statsArray[i].status = "starting";
+                    }, 500);
+                  }
+                });
+              };
+              reinitAndRestart();
+              showConfigModal = false;
+              configModalIsEditing = false;
+              configModalSavePrompt = false;
+            };
+
+            if (str === "g" || str === "G") {
+              saveConfig(configModalDraft);
+              if (configOnly) {
+                logUpdate.clear();
+                console.log(chalk.green("✓ Settings saved globally (~/.hitmaker/config.json)"));
+                process.exit(0);
               }
-            } else {
-              addLog("✓ Settings applied to session");
+              applyAndRestart("✓ Settings saved globally (~/.hitmaker/config.json)");
+            } else if (str === "l" || str === "L") {
+              saveLocalConfig(configModalDraft);
+              if (configOnly) {
+                logUpdate.clear();
+                console.log(chalk.green("✓ Settings saved locally (.hitmaker.json)"));
+                process.exit(0);
+              }
+              applyAndRestart("✓ Settings saved locally (.hitmaker.json)");
+            } else if (key.name === "escape") {
+              configModalSavePrompt = false;
             }
-            // Restart all processes with new config
-            // Re-initialize proxy pool if mode changed
+          } else if ((str === "a" || str === "A") && !configOnly) {
+            // Apply to session only (no save) — not available in config-only mode
+            CONFIG = { ...configModalDraft };
+            addLog("✓ Settings applied to session");
             parentProxyPool.destroy();
             parentProxyPool = new ProxyPool(CONFIG);
             const reinitAndRestart = async () => {
@@ -1227,14 +1293,23 @@ async function runInteractive(links) {
             reinitAndRestart();
             showConfigModal = false;
             configModalIsEditing = false;
+          } else if (str === "s" || str === "S") {
+            // Enter save prompt — ask Global or Local
+            configModalSavePrompt = true;
           } else if (str === "r" || str === "R") {
             // Restore factory defaults
             configModalDraft = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
             addLog("✓ Factory defaults restored (press A to apply or S to save)");
           } else if (key.name === "escape") {
+            if (configOnly) {
+              // In config-only mode, exit the process
+              logUpdate.clear();
+              process.exit(0);
+            }
             // Close config modal
             showConfigModal = false;
             configModalIsEditing = false;
+            configModalSavePrompt = false;
             configModalTextInput = "";
             configModalDraft = { ...CONFIG };
           }
@@ -1268,6 +1343,7 @@ async function runInteractive(links) {
         showConfigModal = true;
         configModalSelectedField = 1;
         configModalIsEditing = false;
+        configModalSavePrompt = false;
         configModalDraft = { ...CONFIG };
         render();
         return;
@@ -1326,6 +1402,12 @@ async function runInteractive(links) {
 async function main() {
   const args = process.argv.slice(2);
 
+  // --config flag: open standalone config editor (reuses runInteractive with no links)
+  if (args.includes("--config") || args.includes("-c")) {
+    await runInteractive([], { openConfig: true });
+    return;
+  }
+
   // Show help if no arguments
   if (args.length === 0) {
     console.log(chalk.cyan.bold("\n💥 Hitmaker – Making the hits!\n"));
@@ -1338,7 +1420,10 @@ async function main() {
       chalk.gray("  hitmaker <file.txt>               # Text file with URLs"),
     );
     console.log(
-      chalk.gray("  hitmaker <url> <file.txt> <url2>  # Mix and match\n"),
+      chalk.gray("  hitmaker <url> <file.txt> <url2>  # Mix and match"),
+    );
+    console.log(
+      chalk.gray("  hitmaker --config                 # Open config editor\n"),
     );
 
     console.log(chalk.white("Text File Format:"));
@@ -1360,7 +1445,7 @@ async function main() {
     );
     console.log(
       chalk.gray(
-        "  Settings persist between sessions in ~/.hitmaker/config.json\n",
+        "  Settings persist in ~/.hitmaker/config.json (global) or .hitmaker.json (local)\n",
       ),
     );
 
