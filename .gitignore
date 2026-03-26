@@ -1,7 +1,9 @@
 node_modules/
+.claude/
 *.log
 .DS_Store
 .env
+.hitmaker.json
 dist/
 coverage/
 .nyc_output/
