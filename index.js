@@ -242,8 +242,9 @@ function renderDashboard(links, statsArray, processes, selectedIndex, logs) {
   lines.push("");
 
   // Header with summary stats
+  const proxyModeLabels = { none: "off", free: "free", url: "list", service: "paid" };
   const proxyLabel = CONFIG.PROXY_MODE !== "none"
-    ? chalk.green(` │ Proxy: ${CONFIG.PROXY_MODE}`)
+    ? chalk.green(` │ Proxy: ${proxyModeLabels[CONFIG.PROXY_MODE] || CONFIG.PROXY_MODE}`)
     : chalk.gray(" │ Proxy: off");
   lines.push(
     chalk.bgCyan.black.bold(" 💥 HITMAKER ") +

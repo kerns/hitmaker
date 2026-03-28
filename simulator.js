@@ -40,22 +40,22 @@ export function getConfig() {
   
   return {
     MIN_PER_MIN: Number(process.env.MIN_PER_MIN || 1),
-    MAX_PER_MIN: Number(process.env.MAX_PER_MIN || 100),
+    MAX_PER_MIN: Number(process.env.MAX_PER_MIN || 25),
     CONCURRENT: Number(process.env.CONCURRENT || 1),
     METHOD: process.env.METHOD || "GET",
     TIMEOUT_MS: Number(process.env.TIMEOUT_MS || 5000),
-    DEVICE_RATIO: Number(process.env.DEVICE_RATIO || 50), // 50% desktop by default
-    UNKNOWN_RATIO: Number(process.env.UNKNOWN_RATIO || 0),
+    DEVICE_RATIO: Number(process.env.DEVICE_RATIO || 60), // 60% desktop by default
+    UNKNOWN_RATIO: Number(process.env.UNKNOWN_RATIO || 5),
     MIN_ACTIVE: Number(process.env.MIN_ACTIVE || 5),
-    MAX_ACTIVE: Number(process.env.MAX_ACTIVE || 25),
-    IDLE_ODDS: Number(process.env.IDLE_ODDS || 0.5), // 50% chance
-    MIN_IDLE: Number(process.env.MIN_IDLE || 2),
-    MAX_IDLE: Number(process.env.MAX_IDLE || 45),
+    MAX_ACTIVE: Number(process.env.MAX_ACTIVE || 15),
+    IDLE_ODDS: Number(process.env.IDLE_ODDS || 0.75), // 75% chance
+    MIN_IDLE: Number(process.env.MIN_IDLE || 1),
+    MAX_IDLE: Number(process.env.MAX_IDLE || 15),
     UNIQUE_IP_PROB: Number(process.env.UNIQUE_IP_PROB || 0.95), // 95% unique visitors
     PROXY_MODE: process.env.PROXY_MODE || "none",
     PROXY_SERVICE_URL: process.env.PROXY_SERVICE_URL || process.env.PROXY_URL || "",
     PROXY_LIST_URL: process.env.PROXY_LIST_URL || "",
-    PROXY_REFRESH_MIN: Number(process.env.PROXY_REFRESH_MIN || 10),
+    PROXY_REFRESH_MIN: Number(process.env.PROXY_REFRESH_MIN || 5),
     URL_PARAMS: urlParams,
   };
 }

@@ -14,24 +14,24 @@ const LOCAL_CONFIG_FILE = ".hitmaker.json";
  */
 export const DEFAULT_CONFIG = {
   MIN_PER_MIN: 1,
-  MAX_PER_MIN: 15,
+  MAX_PER_MIN: 25,
   CONCURRENT: 1,
   METHOD: "GET",
   TIMEOUT_MS: 5000,
-  DEVICE_RATIO: 50, // 50 = 50% desktop, 50% mobile (of non-unknown traffic)
-  UNKNOWN_RATIO: 0, // % of total traffic that uses unknown/unclassifiable device
+  DEVICE_RATIO: 60, // 60 = 60% desktop, 40% mobile (of non-unknown traffic)
+  UNKNOWN_RATIO: 5, // % of total traffic that uses unknown/unclassifiable device
   MIN_ACTIVE: 5,
-  MAX_ACTIVE: 25,
-  IDLE_ODDS: 0.5,
-  MIN_IDLE: 2,
-  MAX_IDLE: 45,
+  MAX_ACTIVE: 15,
+  IDLE_ODDS: 0.75,
+  MIN_IDLE: 1,
+  MAX_IDLE: 15,
   UNIQUE_IP_PROB: 0.95,
   PROXY_MODE: "none",           // "none" | "free" | "url" | "service"
   PROXY_SERVICE_URL: "",        // rotating proxy endpoint (service mode) — persists across mode switches
   PROXY_LIST_URL: "",           // proxy list URL or file path (url mode)
-  PROXY_REFRESH_MIN: 10,       // how often to refresh free proxy list (minutes)
+  PROXY_REFRESH_MIN: 5,        // how often to refresh free proxy list (minutes)
   URL_PARAMS: [
-    { key: "qr", value: "1", probability: 35 },
+    { key: "qr", value: "1", probability: 1, payloads: [] },
   ],
 };
 
@@ -251,7 +251,7 @@ export const CONFIG_FIELDS = [
     type: "select",
     options: ["none", "free", "url", "service"],
     format: (v) => {
-      const labels = { none: "Off (header spoof)", free: "Free proxies", url: "Custom list", service: "Rotating service" };
+      const labels = { none: "Off (spoofed headers)", free: "Free proxies (unreliable)", url: "Proxy list (.txt, .csv)", service: "Paid proxy (IPRoyal, BrightData)" };
       return labels[v] || v;
     },
   },

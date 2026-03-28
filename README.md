@@ -90,31 +90,31 @@ Local configs are useful for automation or project-specific setups where you wan
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `MIN_PER_MIN` | 1 | Minimum hits per minute (active phase) |
-| `MAX_PER_MIN` | 15 | Maximum hits per minute (active phase) |
+| `MAX_PER_MIN` | 25 | Maximum hits per minute (active phase) |
 | `CONCURRENT` | 1 | Concurrent workers per link |
 | `METHOD` | GET | HTTP method (GET, HEAD, POST) |
 | `TIMEOUT_MS` | 5000 | Request timeout (ms) |
-| `DEVICE_RATIO` | 50 | Desktop percentage of non-unknown traffic (0-100) |
-| `UNKNOWN_RATIO` | 0 | Percentage of traffic from unknown devices — bots, crawlers, CLI tools (0-100) |
+| `DEVICE_RATIO` | 60 | Desktop percentage of non-unknown traffic (0-100) |
+| `UNKNOWN_RATIO` | 5 | Percentage of traffic from unknown devices — bots, crawlers, CLI tools (0-100) |
 | `UNIQUE_IP_PROB` | 0.95 | Probability of unique IP (0.0-1.0) |
 | `MIN_ACTIVE` | 5 | Minimum active phase duration (minutes) |
-| `MAX_ACTIVE` | 25 | Maximum active phase duration (minutes) |
-| `IDLE_ODDS` | 0.5 | Probability of entering idle phase (0.0-1.0) |
-| `MIN_IDLE` | 2 | Minimum idle phase duration (minutes) |
-| `MAX_IDLE` | 45 | Maximum idle phase duration (minutes) |
-| `PROXY_MODE` | none | Proxy mode: `none` (header spoof), `free`, `url`, `service` |
-| `PROXY_SERVICE_URL` | | Rotating proxy endpoint (for `service` mode) |
+| `MAX_ACTIVE` | 15 | Maximum active phase duration (minutes) |
+| `IDLE_ODDS` | 0.75 | Probability of entering idle phase (0.0-1.0) |
+| `MIN_IDLE` | 1 | Minimum idle phase duration (minutes) |
+| `MAX_IDLE` | 15 | Maximum idle phase duration (minutes) |
+| `PROXY_MODE` | none | Proxy mode: `none` (spoofed headers), `free`, `url`, `service` |
+| `PROXY_SERVICE_URL` | | Paid proxy endpoint (for `service` mode) |
 | `PROXY_LIST_URL` | | Proxy list URL or file path (for `url` mode) |
-| `PROXY_REFRESH_MIN` | 10 | How often to refresh proxy list (minutes, for `free`/`url` modes) |
+| `PROXY_REFRESH_MIN` | 5 | How often to refresh proxy list (minutes, for `free`/`url` modes) |
 
 ### Proxy Modes
 
 | Mode | Description |
 |------|-------------|
-| `none` | No proxy — spoofs geo headers (`x-forwarded-for`, `x-vercel-ip-*`) directly |
-| `free` | Auto-fetches free proxies from ProxyScrape, health-checks them |
-| `url` | Custom proxy list from a URL or local file |
-| `service` | Rotating proxy service (e.g. Bright Data, Oxylabs) via a single endpoint |
+| `none` | Off (spoofed headers) — spoofs geo headers (`x-forwarded-for`, `x-vercel-ip-*`) directly |
+| `free` | Free proxies (unreliable) — auto-fetches from ProxyScrape, health-checks them |
+| `url` | Proxy list (.txt, .csv) — custom proxy list from a URL or local file |
+| `service` | Paid proxy (IPRoyal, BrightData) — rotating proxy service via a single endpoint |
 
 In `none` mode (default), requests go directly from your machine with spoofed IP/geo headers. This is fast but doesn't test real geographic routing. The other modes route traffic through actual proxies for realistic latency and geolocation.
 
