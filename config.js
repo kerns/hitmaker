@@ -251,7 +251,12 @@ export const CONFIG_FIELDS = [
     type: "select",
     options: ["none", "free", "url", "service"],
     format: (v) => {
-      const labels = { none: "Off (spoofed headers)", free: "Free proxies (unreliable)", url: "Proxy list (.txt, .csv)", service: "Paid proxy (IPRoyal, BrightData)" };
+      const labels = {
+        none: "None (spoofed headers only)",
+        free: "Free pool (auto-fetched, unreliable)",
+        url: "Custom list (URL or local file)",
+        service: "Rotating service (IPRoyal, BrightData, etc.)",
+      };
       return labels[v] || v;
     },
   },

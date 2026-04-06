@@ -179,17 +179,14 @@ function spawnWorker(url, stats, onOutput, parentProxyPool) {
         stats.status = "idle";
         stats.currentRate = 0;
       }
-      // Count errors
-      if (line.includes("ERROR")) {
-        stats.errors++;
-      }
       onOutput(line);
     }
   });
 
   child.stderr.on("data", (data) => {
-    stats.errors++;
-    onOutput(data.toString());
+    const stderrLines = data.toString().split("\n").filter((l) => l.trim());
+    stats.errors += stderrLines.length;
+    for (const line of stderrLines) onOutput(line);
   });
 
   // Listen for IPC messages from worker (proxy failures)
@@ -242,7 +239,7 @@ function renderDashboard(links, statsArray, processes, selectedIndex, logs) {
   lines.push("");
 
   // Header with summary stats
-  const proxyModeLabels = { none: "off", free: "free", url: "list", service: "paid" };
+  const proxyModeLabels = { none: "off", free: "free pool", url: "custom list", service: "rotating" };
   const proxyLabel = CONFIG.PROXY_MODE !== "none"
     ? chalk.green(` │ Proxy: ${proxyModeLabels[CONFIG.PROXY_MODE] || CONFIG.PROXY_MODE}`)
     : chalk.gray(" │ Proxy: off");
@@ -1178,6 +1175,41 @@ async function runInteractive(links, { openConfig = false } = {}) {
             render();
           }
         } else {
+          // Apply config draft and restart all workers
+          const applyAndRestart = (logMsg) => {
+            CONFIG = { ...configModalDraft };
+            addLog(logMsg);
+            parentProxyPool.destroy();
+            parentProxyPool = new ProxyPool(CONFIG);
+            (async () => {
+              if (CONFIG.PROXY_MODE === "free" || CONFIG.PROXY_MODE === "url") {
+                addLog("Fetching and health-checking proxy pool...");
+                await parentProxyPool.init();
+                addLog(`Proxy pool: ${parentProxyPool.getAliveList().length} alive proxies`);
+              } else {
+                await parentProxyPool.init();
+              }
+              processes.forEach((p, i) => {
+                if (p && !p.killed) {
+                  p.kill();
+                  setTimeout(() => {
+                    const child = spawnWorker(
+                      links[i].url,
+                      statsArray[i],
+                      addLog,
+                      parentProxyPool,
+                    );
+                    processes[i] = child;
+                    statsArray[i].status = "starting";
+                  }, 500);
+                }
+              });
+            })();
+            showConfigModal = false;
+            configModalIsEditing = false;
+            configModalSavePrompt = false;
+          };
+
           // Navigating fields
           if (key.name === "up") {
             let newIndex = configModalSelectedField - 1;
@@ -1207,41 +1239,6 @@ async function runInteractive(links, { openConfig = false } = {}) {
             }
           } else if (configModalSavePrompt) {
             // Second step: choose save target
-            const applyAndRestart = (logMsg) => {
-              CONFIG = { ...configModalDraft };
-              addLog(logMsg);
-              parentProxyPool.destroy();
-              parentProxyPool = new ProxyPool(CONFIG);
-              const reinitAndRestart = async () => {
-                if (CONFIG.PROXY_MODE === "free" || CONFIG.PROXY_MODE === "url") {
-                  addLog("Fetching and health-checking proxy pool...");
-                  await parentProxyPool.init();
-                  addLog(`Proxy pool: ${parentProxyPool.getAliveList().length} alive proxies`);
-                } else {
-                  await parentProxyPool.init();
-                }
-                processes.forEach((p, i) => {
-                  if (p && !p.killed) {
-                    p.kill();
-                    setTimeout(() => {
-                      const child = spawnWorker(
-                        links[i].url,
-                        statsArray[i],
-                        addLog,
-                        parentProxyPool,
-                      );
-                      processes[i] = child;
-                      statsArray[i].status = "starting";
-                    }, 500);
-                  }
-                });
-              };
-              reinitAndRestart();
-              showConfigModal = false;
-              configModalIsEditing = false;
-              configModalSavePrompt = false;
-            };
-
             if (str === "g" || str === "G") {
               saveConfig(configModalDraft);
               if (configOnly) {
@@ -1263,37 +1260,7 @@ async function runInteractive(links, { openConfig = false } = {}) {
             }
           } else if ((str === "a" || str === "A") && !configOnly) {
             // Apply to session only (no save) — not available in config-only mode
-            CONFIG = { ...configModalDraft };
-            addLog("✓ Settings applied to session");
-            parentProxyPool.destroy();
-            parentProxyPool = new ProxyPool(CONFIG);
-            const reinitAndRestart = async () => {
-              if (CONFIG.PROXY_MODE === "free" || CONFIG.PROXY_MODE === "url") {
-                addLog("Fetching and health-checking proxy pool...");
-                await parentProxyPool.init();
-                addLog(`Proxy pool: ${parentProxyPool.getAliveList().length} alive proxies`);
-              } else {
-                await parentProxyPool.init();
-              }
-              processes.forEach((p, i) => {
-                if (p && !p.killed) {
-                  p.kill();
-                  setTimeout(() => {
-                    const child = spawnWorker(
-                      links[i].url,
-                      statsArray[i],
-                      addLog,
-                      parentProxyPool,
-                    );
-                    processes[i] = child;
-                    statsArray[i].status = "starting";
-                  }, 500);
-                }
-              });
-            };
-            reinitAndRestart();
-            showConfigModal = false;
-            configModalIsEditing = false;
+            applyAndRestart("✓ Settings applied to session");
           } else if (str === "s" || str === "S") {
             // Enter save prompt — ask Global or Local
             configModalSavePrompt = true;
